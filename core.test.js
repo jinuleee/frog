@@ -72,6 +72,7 @@ test('file round trip keeps text and meta', () => {
   const n = { id: 'a', text: '# 안녕\n---\n본문', created: 1, updated: 2, pinned: true, archived: false, trashed: false, category: '업무' };
   assert.deepEqual(fromFile('a', toFile(n)), n);
   assert.equal(fromFile('b', '그냥 마크다운').text, '그냥 마크다운');
+  assert.equal(fromFile('c', toFile({ ...n, order: 1.5 })).order, 1.5); // hand-made list order survives sync
 });
 
 test('base64 survives Korean and emoji bytes', () => {

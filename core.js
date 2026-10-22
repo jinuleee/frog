@@ -27,7 +27,7 @@ export function tags(text) {
 
 export const title = text => text.trimStart().split('\n')[0].replace(/^#+\s*/, '').trim() || '새 노트';
 
-const META = ['created', 'updated', 'pinned', 'archived', 'trashed', 'category'];
+const META = ['created', 'updated', 'pinned', 'archived', 'trashed', 'category', 'order'];
 
 export const toFile = n => `---\n${META.map(k => `${k}: ${n[k] ?? ''}`).join('\n')}\n---\n${n.text}`;
 
@@ -41,7 +41,7 @@ export function fromFile(id, raw) {
     const i = line.indexOf(':');
     const k = line.slice(0, i).trim(), v = line.slice(i + 1).trim();
     if (k === 'category') n.category = v;
-    else if (META.includes(k)) n[k] = v === 'true' ? true : v === 'false' ? false : Number(v) || 0;
+    else if (META.includes(k) && v) n[k] = v === 'true' ? true : v === 'false' ? false : Number(v) || 0;
   }
   return n;
 }

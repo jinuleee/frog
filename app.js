@@ -1,9 +1,11 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo } from './core.js?v=8';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo } from './core.js?v=9';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 
-// Note: { id, text, created, updated, pinned, archived, trashed, sha?, dirty?, gone? }
+// Note: { id, text, created, updated, pinned, archived, trashed, category, order?, sha?, dirty?, gone? }
+// List order: a note dragged by hand keeps its 'order'; others sort by last edit.
+const rank = n => n.order || n.updated;
 // sha = last synced GitHub blob, dirty = local change not pushed yet, gone = deleted, waiting to delete on GitHub.
 const notes = load('frog.notes', {});
 const cfg = load('frog.cfg', { repo: 'jinuleee/frog-notes', token: '', theme: 'auto' });
@@ -38,7 +40,7 @@ function visible() {
       && (!view.tag || tags(n.text).some(t => t === view.tag || t.startsWith(view.tag + '/')))
       && (!view.cat || n.category === view.cat)
       && (!q || n.text.toLowerCase().includes(q)))
-    .sort((a, b) => b.pinned - a.pinned || b.updated - a.updated);
+    .sort((a, b) => b.pinned - a.pinned || rank(b) - rank(a));
 }
 
 function renderSide() {
@@ -69,8 +71,8 @@ function renderSide() {
 function renderList() {
   $('#items').innerHTML = visible().map(n => {
     const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\{[^{}:]+:([^{}]*)\}/g, '$1').replace(/\[[ xX]?\]|[#*_>`~=^\[\]-]/g, '').trim().slice(0, 120);
-    return `<li><button data-id="${esc(n.id)}" aria-current="${n.id === view.current}">
-      <strong>${catColor(n.category) ? `<i class="swatch" style="background:${esc(catColor(n.category))}" title="${esc(n.category)}"></i>` : ''}${n.pinned ? '<span class="pin">고정</span>' : ''}${esc(title(n.text))}</strong>
+    return `<li draggable="true"><button data-id="${esc(n.id)}" aria-current="${n.id === view.current}">
+      <strong>${catColor(n.category) ? `<i class="swatch" style="background:${esc(catColor(n.category))}" title="${esc(n.category)}"></i>` : ''}${n.pinned ? '<span class="pin" title="고정">&#x1F4CC;</span>' : ''}${esc(title(n.text))}</strong>
       <span>${esc(body)}</span>
       <time>${new Date(n.updated).toLocaleDateString('ko-KR')}${openTodos(n.text) ? ` · <span class="todo-left">할 일 ${openTodos(n.text)}</span>` : ''}</time></button></li>`;
   }).join('') || '<li class="none">노트가 없습니다</li>';
@@ -428,6 +430,39 @@ $('#tagRows').onclick = e => {
   save(); render(); queueSync(); renderTagRows();
 };
 $('#items').onclick = e => { const b = e.target.closest('button[data-id]'); if (b) open(b.dataset.id); };
+
+// Drag a note up or down the list; it lands halfway between its new neighbours.
+let dragId = null;
+const dropAt = e => {
+  const li = e.target.closest('li[draggable]');
+  return li && { li, after: e.clientY > li.getBoundingClientRect().top + li.offsetHeight / 2 };
+};
+const clearDrop = () => $('#items').querySelectorAll('.drop-before, .drop-after').forEach(li => li.className = '');
+$('#items').addEventListener('dragstart', e => {
+  dragId = e.target.closest('li')?.firstElementChild.dataset.id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', ''); // Firefox will not start a drag without data
+});
+$('#items').addEventListener('dragover', e => {
+  const d = dragId && dropAt(e);
+  if (!d) return;
+  e.preventDefault();
+  clearDrop();
+  d.li.className = d.after ? 'drop-after' : 'drop-before';
+});
+$('#items').addEventListener('dragend', () => { dragId = null; clearDrop(); });
+$('#items').addEventListener('drop', e => {
+  const d = dragId && dropAt(e);
+  clearDrop();
+  if (!d) return;
+  e.preventDefault();
+  const list = visible().filter(n => n.id !== dragId);
+  const i = list.findIndex(n => n.id === d.li.firstElementChild.dataset.id) + d.after;
+  const above = list[i - 1], below = list[i], n = notes[dragId];
+  n.order = above && below ? (rank(above) + rank(below)) / 2 : above ? rank(above) - 60000 : below ? rank(below) + 60000 : n.order;
+  dragId = null;
+  changed(n, false);
+});
 $('#menuBtn').onclick = () => { document.body.classList.remove('side-closed'); setPane('side'); };
 $('#backBtn').onclick = () => open(null);
 
