@@ -1,5 +1,20 @@
 // Pure helpers shared by app.js and core.test.js (no DOM, so Node can test them).
 
+const TAG_CHARS = '[\\p{L}\\p{N}_\\-/]';
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // '-' and '/' need no escape outside a class
+
+// Rename #from (and its children #from/...) everywhere in a note.
+export const renameTag = (text, from, to) =>
+  text.replace(new RegExp(`(^|\\s)#${reEsc(from)}(?=/|\\s|$)`, 'gmu'), `$1#${to}`);
+
+// Remove #tag and its children #tag/... from a note.
+export const removeTag = (text, tag) =>
+  text.replace(new RegExp(`(^|[ \\t])#${reEsc(tag)}(?:/${TAG_CHARS}*)?(?=\\s|$)`, 'gmu'), '$1');
+
+// Text colors for {빨강:글자} or {red:글자}; values are CSS class suffixes.
+export const COLORS = { 빨강: 'red', 주황: 'orange', 노랑: 'yellow', 초록: 'green', 파랑: 'blue', 보라: 'purple', 분홍: 'pink', 회색: 'gray' };
+const COLOR_RE = new RegExp(`\\{(${[...Object.keys(COLORS), ...Object.values(COLORS)].join('|')}):([^{}]+)\\}`, 'g');
+
 // A tag must follow whitespace or a line start, so "# Heading" and "a#b" are not tags.
 export function tags(text) {
   const out = new Set();
@@ -12,20 +27,21 @@ export function tags(text) {
 
 export const title = text => text.trimStart().split('\n')[0].replace(/^#+\s*/, '').trim() || '새 노트';
 
-const META = ['created', 'updated', 'pinned', 'archived', 'trashed'];
+const META = ['created', 'updated', 'pinned', 'archived', 'trashed', 'category'];
 
-export const toFile = n => `---\n${META.map(k => `${k}: ${n[k]}`).join('\n')}\n---\n${n.text}`;
+export const toFile = n => `---\n${META.map(k => `${k}: ${n[k] ?? ''}`).join('\n')}\n---\n${n.text}`;
 
 export function fromFile(id, raw) {
   raw = raw.replace(/\r\n/g, '\n');
-  const n = { id, text: raw, created: 0, updated: 0, pinned: false, archived: false, trashed: false };
+  const n = { id, text: raw, created: 0, updated: 0, pinned: false, archived: false, trashed: false, category: '' };
   const m = raw.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!m) return n; // a plain .md dropped into the repo by hand still loads
   n.text = raw.slice(m[0].length);
   for (const line of m[1].split('\n')) {
     const i = line.indexOf(':');
     const k = line.slice(0, i).trim(), v = line.slice(i + 1).trim();
-    if (META.includes(k)) n[k] = v === 'true' ? true : v === 'false' ? false : Number(v) || 0;
+    if (k === 'category') n.category = v;
+    else if (META.includes(k)) n[k] = v === 'true' ? true : v === 'false' ? false : Number(v) || 0;
   }
   return n;
 }
@@ -53,6 +69,7 @@ function inline(s) { // s is already escaped
     .replace(/~~(\S(?:.*?\S)?)~~/g, (_, t) => `${mk('~~')}<s>${t}</s>${mk('~~')}`)
     .replace(/(^|[^~])~([^\s~](?:[^~]*?[^\s~])?)~(?!~)/g, (_, p, t) => `${p}${mk('~')}<u>${t}</u>${mk('~')}`)
     .replace(/==(\S(?:.*?\S)?)==/g, (_, t) => `${mk('==')}<mark>${t}</mark>${mk('==')}`)
+    .replace(COLOR_RE, (_, c, t) => `${mk(`{${c}:`)}<span class="c-${COLORS[c] || c}">${t}</span>${mk('}')}`)
     .replace(/&#60;br\s*\/?&#62;/gi, b => mk(b) + '<br>')
     .replace(/(^|\s)(#[\p{L}\p{N}_\-/]+)/gu, '$1<span class="tag">$2</span>')
     .replace(/\u0000(\d+)\u0000/g, (_, i) => kept[i]);

@@ -1,7 +1,7 @@
 // Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter } from './core.js';
+import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter, renameTag, removeTag } from './core.js';
 
 // What the editor shows as plain text must equal the note, or the caret drifts.
 const plain = html => html.split('</div>').slice(0, -1)
@@ -69,7 +69,7 @@ test('title: first line without heading marks', () => {
 });
 
 test('file round trip keeps text and meta', () => {
-  const n = { id: 'a', text: '# 안녕\n---\n본문', created: 1, updated: 2, pinned: true, archived: false, trashed: false };
+  const n = { id: 'a', text: '# 안녕\n---\n본문', created: 1, updated: 2, pinned: true, archived: false, trashed: false, category: '업무' };
   assert.deepEqual(fromFile('a', toFile(n)), n);
   assert.equal(fromFile('b', '그냥 마크다운').text, '그냥 마크다운');
 });
@@ -78,4 +78,19 @@ test('base64 survives Korean and emoji bytes', () => {
   const s = '개구리 frog \u{1F438}';
   assert.equal(b64decode(b64encode(s)), s);
   assert.equal(b64decode('7JWI\n64WV'), '안녕'); // GitHub wraps base64 with newlines
+});
+
+test('tag manager: rename and remove keep other text', () => {
+  const s = '#업무 회의 #업무/홈쇼핑 #업무용 a#업무\n#개인';
+  assert.equal(renameTag(s, '업무', '일'), '#일 회의 #일/홈쇼핑 #업무용 a#업무\n#개인');
+  assert.equal(removeTag(s, '업무'), ' 회의  #업무용 a#업무\n#개인');
+});
+
+test('color text keeps the exact text', () => {
+  const s = '{빨강:뉴스} {blue:**굵은 파랑**} {없는색:그대로}';
+  const h = renderLines(s);
+  assert.equal(plain(h), s);
+  assert.match(h, /<span class="c-red">뉴스<\/span>/);
+  assert.match(h, /<span class="c-blue">.*<b>굵은 파랑<\/b>/);
+  assert.doesNotMatch(h, /c-없는색/);
 });

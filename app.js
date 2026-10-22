@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter } from './core.js?v=4';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag } from './core.js?v=5';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -7,7 +7,14 @@ const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; 
 // sha = last synced GitHub blob, dirty = local change not pushed yet, gone = deleted, waiting to delete on GitHub.
 const notes = load('frog.notes', {});
 const cfg = load('frog.cfg', { repo: 'jinuleee/frog-notes', token: '', theme: 'auto' });
-const view = { filter: 'all', tag: null, q: '', current: null };
+const view = { filter: 'all', tag: null, cat: null, q: '', current: null };
+// Categories: [{ name, color }], synced as categories.json next to the notes. meta.sha/dirty work like a note's.
+let cats = load('frog.cats', []);
+const catMeta = load('frog.catMeta', { sha: null, dirty: false });
+const folds = load('frog.folds', {});
+const saveCats = () => { try { localStorage.setItem('frog.cats', JSON.stringify(cats)); localStorage.setItem('frog.catMeta', JSON.stringify(catMeta)); } catch {} };
+const catColor = name => cats.find(c => c.name === name)?.color;
+const PALETTE = ['#c678dd', '#f0883e', '#3fb68b', '#e5534b', '#79c0ff', '#e3b341', '#8b949e'];
 
 let warned = false;
 function save() {
@@ -27,29 +34,39 @@ function visible() {
     .filter(n => !n.gone
       && (view.filter === 'trashed' ? n.trashed : !n.trashed && n.archived === (view.filter === 'archived'))
       && (!view.tag || tags(n.text).some(t => t === view.tag || t.startsWith(view.tag + '/')))
+      && (!view.cat || n.category === view.cat)
       && (!q || n.text.toLowerCase().includes(q)))
     .sort((a, b) => b.pinned - a.pinned || b.updated - a.updated);
 }
 
 function renderSide() {
   for (const b of document.querySelectorAll('[data-filter]'))
-    b.setAttribute('aria-current', !view.tag && b.dataset.filter === view.filter);
+    b.setAttribute('aria-current', !view.tag && !view.cat && b.dataset.filter === view.filter);
+  const live = Object.values(notes).filter(n => !n.gone && !n.trashed);
+  $('#cats').innerHTML = cats.map(c => `<li><button data-cat="${esc(c.name)}" aria-current="${view.cat === c.name}">
+    <i class="swatch" style="background:${esc(c.color)}"></i>${esc(c.name)}<span class="count">${live.filter(n => n.category === c.name).length}</span></button></li>`).join('')
+    || '<li class="none-side">카테고리 관리에서 추가하세요</li>';
+  for (const g of document.querySelectorAll('.group')) {
+    const open = !folds[g.dataset.group];
+    g.classList.toggle('folded', !open);
+    g.querySelector('.fold').setAttribute('aria-expanded', open);
+  }
   const tree = {};
   for (const n of Object.values(notes))
     if (!n.gone && !n.trashed) for (const t of tags(n.text)) t.split('/').reduce((o, p) => (o[p] ??= {}), tree);
   const html = (o, path) => Object.keys(o).sort().map(k => {
     const p = path ? `${path}/${k}` : k;
     const kids = html(o[k], p);
-    return `<li><button data-tag="${esc(p)}" aria-current="${view.tag === p}">#${esc(k)}</button>${kids && `<ul>${kids}</ul>`}</li>`;
+    return `<li><button data-tag="${esc(p)}" aria-current="${view.tag === p}"><svg class="i" viewBox="0 0 24 24"><path d="M3 12V3h9l9 9-9 9-9-9Zm4.5-4.5h.01"/></svg>${esc(k)}</button>${kids && `<ul>${kids}</ul>`}</li>`;
   }).join('');
   $('#tags').innerHTML = html(tree, '');
 }
 
 function renderList() {
   $('#items').innerHTML = visible().map(n => {
-    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\[[ xX]\]|[#*_>`~=^\[\]-]/g, '').trim().slice(0, 120);
+    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\{[^{}:]+:([^{}]*)\}/g, '$1').replace(/\[[ xX]\]|[#*_>`~=^\[\]-]/g, '').trim().slice(0, 120);
     return `<li><button data-id="${esc(n.id)}" aria-current="${n.id === view.current}">
-      <strong>${n.pinned ? '<span class="pin">고정</span>' : ''}${esc(title(n.text))}</strong>
+      <strong>${catColor(n.category) ? `<i class="swatch" style="background:${esc(catColor(n.category))}" title="${esc(n.category)}"></i>` : ''}${n.pinned ? '<span class="pin">고정</span>' : ''}${esc(title(n.text))}</strong>
       <span>${esc(body)}</span>
       <time>${new Date(n.updated).toLocaleDateString('ko-KR')}</time></button></li>`;
   }).join('') || '<li class="none">노트가 없습니다</li>';
@@ -57,10 +74,17 @@ function renderList() {
 
 function renderEditor() {
   const n = notes[view.current];
-  $('#editor header').hidden = ed.hidden = !n;
+  $('#editor header').hidden = $('.page').hidden = !n;
   $('#empty').hidden = !!n;
   if (!n) return;
   paint();
+  $('#catSel').innerHTML = `<option value="">카테고리 없음</option>` + cats.map(c => `<option>${esc(c.name)}</option>`).join('');
+  $('#catSel').value = cats.some(c => c.name === n.category) ? n.category : '';
+  const day = t => new Date(t).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
+  $('#rail').hidden = cfg.showDates === false;
+  $('#railTop').textContent = day(n.created);
+  $('#railBottom').textContent = day(n.updated);
+  rail();
   const trash = view.filter === 'trashed';
   $('#pinBtn').textContent = n.pinned ? '고정 해제' : '고정';
   $('#archiveBtn').textContent = trash ? '복원' : n.archived ? '보관 해제' : '보관';
@@ -140,6 +164,30 @@ function markActive() {
   line?.classList?.add('active');
 }
 document.addEventListener('selectionchange', markActive);
+
+// Date rail: created on top, last edit at the bottom, a thumb that follows the scroll (like a forum timeline).
+function rail() {
+  if ($('#rail').hidden) return;
+  const max = ed.scrollHeight - ed.clientHeight, r = max > 0 ? ed.scrollTop / max : 0;
+  const lines = ed.children.length || 1;
+  const first = [...ed.children].findIndex(d => d.offsetTop + d.offsetHeight > ed.scrollTop);
+  $('.thumb').style.top = `calc(${r} * (100% - 44px))`;
+  $('#railPos').textContent = `${Math.max(first, 0) + 1} / ${lines}`;
+  $('#railLine').textContent = '줄';
+}
+ed.addEventListener('scroll', rail);
+
+let lastSel = null; // the select box steals focus, so remember where the caret was
+document.addEventListener('selectionchange', () => { if (document.activeElement === ed) lastSel = selection(); });
+$('#colorSel').onchange = e => {
+  const c = e.target.value, n = notes[view.current];
+  e.target.value = '';
+  if (!c || !n) return;
+  const [a, b] = lastSel || [n.text.length, n.text.length];
+  ed.focus();
+  setText(`${n.text.slice(0, a)}{${c}:${n.text.slice(a, b)}}${n.text.slice(b)}`, a === b ? a + c.length + 2 : b + c.length + 3);
+};
+$('#catSel').onchange = e => { const n = notes[view.current]; n.category = e.target.value; changed(n, false); };
 
 function remember(n, force) {
   if (history.id !== n.id) Object.assign(history, { id: n.id, undo: [], redo: [] });
@@ -250,7 +298,7 @@ function changed(n, bumpTime = true) {
 
 $('#newBtn').onclick = () => {
   const now = Date.now(), id = crypto.randomUUID();
-  notes[id] = { id, text: '', created: now, updated: now, pinned: false, archived: false, trashed: false };
+  notes[id] = { id, text: '', created: now, updated: now, pinned: false, archived: false, trashed: false, category: view.cat || '' };
   if (view.filter !== 'all') view.filter = 'all';
   open(id);
   ed.focus();
@@ -285,14 +333,74 @@ $('#exportBtn').onclick = () => {
 };
 
 $('#side').onclick = e => {
-  const b = e.target.closest('button[data-filter], button[data-tag]');
+  const fold = e.target.closest('.fold');
+  if (fold) { const g = fold.closest('.group').dataset.group; folds[g] = !folds[g]; try { localStorage.setItem('frog.folds', JSON.stringify(folds)); } catch {} return renderSide(); }
+  const b = e.target.closest('button[data-filter], button[data-tag], button[data-cat]');
   if (!b) return;
   view.filter = b.dataset.filter || 'all';
   view.tag = b.dataset.tag || null;
+  view.cat = b.dataset.cat || null;
   open(null);
 };
+$('#sideToggle').onclick = () => { document.body.classList.toggle('side-closed'); if (innerWidth <= 760) setPane('list'); };
+
+/* ---------- category manager ---------- */
+
+const catRow = (c = {}) => `<li data-old="${esc(c.name || '')}"><input type="color" value="${esc(c.color || PALETTE[$('#catRows').children.length % PALETTE.length])}" aria-label="색">
+  <input class="name" value="${esc(c.name || '')}" maxlength="30" placeholder="카테고리 이름" aria-label="이름"><button type="button" class="del">삭제</button></li>`;
+$('#catManage').onclick = () => { $('#catRows').innerHTML = ''; for (const c of cats) $('#catRows').insertAdjacentHTML('beforeend', catRow(c)); $('#catDlg').showModal(); };
+$('#catAdd').onclick = () => { $('#catRows').insertAdjacentHTML('beforeend', catRow()); $('#catRows').lastElementChild.querySelector('.name').focus(); };
+$('#catRows').onclick = e => e.target.closest('.del')?.closest('li').remove();
+$('#catDlg').onclose = () => {
+  if ($('#catDlg').returnValue !== 'ok') return;
+  const next = [], moved = {};
+  for (const li of $('#catRows').children) {
+    const name = li.querySelector('.name').value.trim().replace(/\s+/g, ' ');
+    if (!name || next.some(c => c.name === name)) continue;
+    next.push({ name, color: li.querySelector('[type=color]').value });
+    if (li.dataset.old) moved[li.dataset.old] = name;
+  }
+  for (const n of Object.values(notes)) {
+    if (!n.category || n.gone) continue;
+    const to = moved[n.category] ?? '';
+    if (to !== n.category) { n.category = to; n.dirty = true; } // renamed or deleted category
+  }
+  if (view.cat && !next.some(c => c.name === view.cat)) view.cat = moved[view.cat] || null;
+  cats = next; catMeta.dirty = true;
+  saveCats(); save(); render(); queueSync();
+};
+
+/* ---------- tag manager ---------- */
+
+function renderTagRows() {
+  const count = {};
+  for (const n of Object.values(notes)) {
+    if (n.gone || n.trashed) continue;
+    const own = new Set(tags(n.text).flatMap(t => t.split('/').map((_, i, p) => p.slice(0, i + 1).join('/')))); // #a/b also counts for #a
+    for (const t of own) count[t] = (count[t] || 0) + 1;
+  }
+  $('#tagRows').innerHTML = Object.keys(count).sort().map(t => `<li data-tag="${esc(t)}"><input class="name" value="${esc(t)}" aria-label="태그 이름">
+    <span class="count">${count[t]}</span><button type="button" class="ren">변경</button><button type="button" class="del">삭제</button></li>`).join('')
+    || '<li class="none-side">아직 태그가 없습니다. 노트에 #태그 를 써 보세요.</li>';
+}
+$('#tagRows').oninput = e => e.target.setCustomValidity?.('');
+$('#tagManage').onclick = () => { renderTagRows(); $('#tagDlg').showModal(); };
+$('#tagRows').onclick = e => {
+  const li = e.target.closest('li[data-tag]'), b = e.target.closest('button');
+  if (!li || !b) return;
+  const from = li.dataset.tag, to = li.querySelector('.name').value.trim().replace(/^#+/, '');
+  if (b.classList.contains('ren') && !/^[\p{L}\p{N}_\-/]+$/u.test(to)) return void (li.querySelector('.name').setCustomValidity('글자·숫자·_·-·/ 만 쓸 수 있어요'), li.querySelector('.name').reportValidity());
+  if (b.classList.contains('del') && b.textContent !== '정말 삭제?') return void (b.textContent = '정말 삭제?');
+  for (const n of Object.values(notes)) {
+    if (n.gone || n.trashed) continue;
+    const t = b.classList.contains('ren') ? renameTag(n.text, from, to) : removeTag(n.text, from);
+    if (t !== n.text) { n.text = t; n.updated = Date.now(); n.dirty = true; }
+  }
+  if (view.tag === from || view.tag?.startsWith(from + '/')) view.tag = null;
+  save(); render(); queueSync(); renderTagRows();
+};
 $('#items').onclick = e => { const b = e.target.closest('button[data-id]'); if (b) open(b.dataset.id); };
-$('#menuBtn').onclick = () => setPane('side');
+$('#menuBtn').onclick = () => { document.body.classList.remove('side-closed'); setPane('side'); };
 $('#backBtn').onclick = () => open(null);
 
 /* ---------- settings ---------- */
@@ -302,14 +410,17 @@ const applyTheme = () => (document.documentElement.dataset.theme = cfg.theme);
 $('#settingsBtn').onclick = () => {
   const f = $('#settings form');
   for (const k of ['repo', 'token', 'theme']) f[k].value = cfg[k];
+  f.showDates.checked = cfg.showDates !== false;
   $('#settings').showModal();
 };
 $('#settings').onclose = () => {
   if ($('#settings').returnValue !== 'ok') return;
   const f = $('#settings form');
   for (const k of ['repo', 'token', 'theme']) cfg[k] = f[k].value.trim();
+  cfg.showDates = f.showDates.checked;
   try { localStorage.setItem('frog.cfg', JSON.stringify(cfg)); } catch {}
   applyTheme();
+  renderEditor();
   sync();
 };
 
@@ -351,6 +462,28 @@ async function push() {
   }
 }
 
+async function syncCats() {
+  const path = 'contents/categories.json';
+  if (catMeta.dirty) {
+    const write = sha => api(path, { method: 'PUT', body: JSON.stringify({ message: 'categories', content: b64encode(JSON.stringify(cats, null, 2)), ...(sha && { sha }) }) });
+    let res;
+    try { res = await write(catMeta.sha); }
+    catch (e) {
+      if (![404, 409, 422].includes(e.status)) throw e;
+      res = await write((await api(path).catch(() => null))?.sha); // changed elsewhere: last write wins
+    }
+    Object.assign(catMeta, { sha: res.content.sha, dirty: false });
+  } else {
+    const cur = await api(path).catch(e => { if (e.status === 404) return null; throw e; });
+    if (cur && cur.sha !== catMeta.sha) {
+      const list = JSON.parse(b64decode(cur.content));
+      cats = Array.isArray(list) ? list.filter(c => typeof c?.name === 'string' && /^#[0-9a-f]{6}$/i.test(c.color)) : [];
+      catMeta.sha = cur.sha;
+    }
+  }
+  saveCats();
+}
+
 async function pull() {
   let tree;
   try { tree = await api('git/trees/HEAD?recursive=1'); }
@@ -380,6 +513,7 @@ async function sync() {
   try {
     await push();
     await pull();
+    await syncCats();
     save(); render();
     status('동기화 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }));
   } catch (e) {

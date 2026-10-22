@@ -8,19 +8,33 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-512.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=4">
-<script type="module" src="app.js?v=4"></script>
+<link rel="stylesheet" href="style.css?v=5">
+<script type="module" src="app.js?v=5"></script>
 </head>
 <body data-pane="list">
 <aside id="side">
-  <header class="brand"><img src="icon-512.png" alt=""> frog</header>
+  <header class="brand">
+    <button id="sideToggle" class="icon" aria-label="메뉴 접기"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    <img src="icon-512.png" alt=""> frog
+  </header>
   <nav aria-label="보기">
-    <button data-filter="all">노트</button>
-    <button data-filter="archived">보관함</button>
-    <button data-filter="trashed">휴지통</button>
+    <button data-filter="all"><svg class="i" viewBox="0 0 24 24"><path d="m12 3-9 5 9 5 9-5-9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg>노트</button>
+    <button data-filter="archived"><svg class="i" viewBox="0 0 24 24"><path d="M2 3h20v4H2zM4 7v13h16V7M9 12h6"/></svg>보관함</button>
+    <button data-filter="trashed"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>휴지통</button>
   </nav>
-  <h2>태그</h2>
-  <ul id="tags" class="tree"></ul>
+
+  <section class="group" data-group="cats">
+    <h2><button class="fold" aria-expanded="true"><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>카테고리</button></h2>
+    <ul id="cats"></ul>
+    <button id="catManage" class="more"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>카테고리 관리</button>
+  </section>
+
+  <section class="group" data-group="tags">
+    <h2><button class="fold" aria-expanded="true"><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>태그</button></h2>
+    <ul id="tags" class="tree"></ul>
+    <button id="tagManage" class="more"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>태그 관리</button>
+  </section>
+
   <footer>
     <span id="status" role="status"></span>
     <button id="settingsBtn">설정</button>
@@ -29,7 +43,7 @@
 
 <section id="list">
   <header>
-    <button id="menuBtn" class="mobile">메뉴</button>
+    <button id="menuBtn" class="icon showside" aria-label="메뉴 열기"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
     <input id="search" type="search" placeholder="검색" aria-label="노트 검색">
     <button id="newBtn" aria-label="새 노트">+</button>
   </header>
@@ -39,14 +53,28 @@
 <main id="editor">
   <header>
     <button id="backBtn" class="mobile">목록</button>
+    <select id="catSel" aria-label="카테고리"></select>
+    <select id="colorSel" aria-label="글자색">
+      <option value="">글자색</option>
+      <option value="빨강">빨강</option><option value="주황">주황</option><option value="노랑">노랑</option>
+      <option value="초록">초록</option><option value="파랑">파랑</option><option value="보라">보라</option>
+      <option value="분홍">분홍</option><option value="회색">회색</option>
+    </select>
     <span class="spacer"></span>
     <button id="pinBtn">고정</button>
     <button id="archiveBtn">보관</button>
     <button id="trashBtn">삭제</button>
     <button id="exportBtn">내보내기</button>
   </header>
-  <div id="text" role="textbox" aria-multiline="true" aria-label="노트 내용" spellcheck="false"
-       data-placeholder="# 제목&#10;&#10;내용을 쓰고 #태그 또는 #업무/회의 처럼 정리하세요."></div>
+  <div class="page">
+    <div id="text" role="textbox" aria-multiline="true" aria-label="노트 내용" spellcheck="false"
+         data-placeholder="# 제목&#10;&#10;내용을 쓰고 #태그 또는 #업무/회의 처럼 정리하세요."></div>
+    <aside id="rail" aria-hidden="true">
+      <span class="when"><small>작성</small><b id="railTop"></b></span>
+      <div class="track"><div class="thumb"><b id="railPos"></b><small id="railLine"></small></div></div>
+      <span class="when"><small>수정</small><b id="railBottom"></b></span>
+    </aside>
+  </div>
   <p id="empty">노트를 고르거나 + 로 새로 만드세요.</p>
 </main>
 
@@ -68,10 +96,33 @@
         <option value="night">Night · 다크</option>
       </select>
     </label>
+    <label class="check"><input type="checkbox" name="showDates"> 글쓰기 칸 오른쪽에 날짜 표시</label>
     <menu>
       <button value="cancel" formnovalidate>취소</button>
       <button value="ok">저장</button>
     </menu>
+  </form>
+</dialog>
+
+<dialog id="catDlg">
+  <form method="dialog">
+    <h2>카테고리 관리</h2>
+    <p class="hint">이름을 바꾸면 그 카테고리의 노트도 함께 옮겨집니다. 지운 카테고리의 노트는 미분류가 됩니다.</p>
+    <ul id="catRows" class="rows"></ul>
+    <button type="button" id="catAdd" class="add">+ 카테고리 추가</button>
+    <menu>
+      <button value="cancel" formnovalidate>취소</button>
+      <button value="ok">저장</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="tagDlg">
+  <form method="dialog">
+    <h2>태그 관리</h2>
+    <p class="hint">이름을 바꾸거나 지우면 모든 노트의 해당 태그(하위 태그 포함)에 바로 적용됩니다.</p>
+    <ul id="tagRows" class="rows"></ul>
+    <menu><button value="close">닫기</button></menu>
   </form>
 </dialog>
 </body>
