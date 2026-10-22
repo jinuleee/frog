@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix } from './core.js?v=10';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey, IMG } from './core.js?v=11';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -83,13 +83,14 @@ const VIEWS = { all: 'Notes', todo: 'Todo', archived: 'Archive', trashed: 'Trash
 function renderList() {
   $('#viewName').textContent = view.tag ? '#' + view.tag : view.cat || VIEWS[view.filter];
   $('#items').innerHTML = visible().map(n => {
-    const pic = n.text.match(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/);
+    const pic = n.text.match(/!\[[^\]]*\]\(((?:https?:\/\/|images\/)[^)\s]+)\)/);
     const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/!?\[([^\]]*)\]\([^)\s]*\)/g, '$1').replace(/\{[^{}:]+:([^{}]*)\}/g, '$1').replace(/\[[ xX]?\]|[#*_>`~=^\[\]|-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
     return `<li draggable="true"><button data-id="${esc(n.id)}" aria-current="${n.id === view.current}">
       <strong>${catColor(n.category) ? `<i class="swatch" style="background:${esc(catColor(n.category))}" title="${esc(n.category)}"></i>` : ''}${n.pinned ? '<span class="pin" title="고정">&#x1F4CC;</span>' : ''}${esc(title(n.text))}</strong>
-      <span>${esc(body)}</span>${pic ? `<img class="pic" src="${esc(pic[1])}" alt="" loading="lazy">` : ''}
+      <span>${esc(body)}</span>${pic ? `<img class="pic" ${IMG.test(pic[1]) ? 'data-img' : 'src'}="${esc(pic[1])}" alt="" loading="lazy">` : ''}
       <time>${when(n.updated)}${openTodos(n.text) ? ` · <span class="todo-left">할 일 ${openTodos(n.text)}</span>` : ''}</time></button></li>`;
   }).join('') || '<li class="none">노트가 없습니다</li>';
+  showImgs($('#items'));
 }
 
 function renderEditor() {
@@ -161,6 +162,8 @@ function selection() {
   return [Math.min(a, b), Math.max(a, b)];
 }
 
+const hidden = t => t.parentNode.classList?.contains('mk') && t.parentNode.closest('.tr, .tsep');
+
 function setCaret(pos) {
   const place = (node, off) => {
     const r = document.createRange();
@@ -172,8 +175,14 @@ function setCaret(pos) {
     const len = lineText(line).length;
     if (pos <= len) {
       const w = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-      for (let t; (t = w.nextNode()); pos -= t.length) if (pos <= t.length) return place(t, pos);
-      return place(line, 0);
+      let seen = null;
+      for (let t; (t = w.nextNode()); ) {
+        if (hidden(t)) { pos = Math.max(0, pos - t.length); continue; } // table pipes are invisible: step past them
+        if (pos <= t.length) return place(t, pos);
+        pos -= t.length;
+        seen = t;
+      }
+      return seen ? place(seen, seen.length) : place(line, 0);
     }
     pos -= len + 1;
   }
@@ -187,6 +196,7 @@ function paint() {
   const sel = document.activeElement === ed ? selection() : null;
   ed.innerHTML = painted = html;
   ed.dataset.id = n.id;
+  showImgs(ed);
   if (sel) setCaret(sel[1]);
   markActive();
 }
@@ -200,6 +210,21 @@ function markActive() {
   line?.classList?.add('active');
 }
 document.addEventListener('selectionchange', markActive);
+
+// Arrow keys can land the caret on a hidden table border or the hidden "|---|" line: hop to the next visible spot.
+let caretWas = 0;
+document.addEventListener('selectionchange', () => {
+  const s = getSelection(), sel = s.isCollapsed && document.activeElement === ed && selection();
+  if (!sel) return;
+  const el = s.focusNode.nodeType === 3 ? s.focusNode : s.focusNode.childNodes[s.focusOffset] || s.focusNode;
+  const sep = el.parentElement?.closest('.tsep') || (el.classList?.contains('tsep') && el);
+  if (sep) {
+    const text = notes[view.current].text, ls = text.lastIndexOf('\n', sel[1] - 1);
+    return setCaret(sel[1] < caretWas ? Math.max(ls, 0) : text.indexOf('\n', sel[1]) + 1 || text.length); // moving up: end of row above
+  }
+  if (el.nodeType === 3 && hidden(el)) return setCaret(sel[1]);
+  caretWas = sel[1];
+});
 
 // Date rail: created on top, last edit at the bottom; the thumb marks the caret's line out of all lines.
 // With no caret yet (note just opened), it marks the first line on screen instead.
@@ -218,7 +243,7 @@ document.addEventListener('selectionchange', () => { if (document.activeElement 
 
 
 // Formatting toolbar (Bear's bottom bar). Buttons never take focus, so the editor keeps its selection.
-const TABLE = '|  |  |\n| --- | --- |\n|  |  |';
+const TABLE = '|  |  |  |\n| --- | --- | --- |\n|  |  |  |';
 const ACTS = {
   h: (t, a, b) => linePrefix(t, b, '#'), ul: (t, a, b) => linePrefix(t, b, '- '),
   ol: (t, a, b) => linePrefix(t, b, '1. '), quote: (t, a, b) => linePrefix(t, b, '> '),
@@ -228,7 +253,8 @@ const ACTS = {
   link: (t, a, b) => { const r = wrap(t, a, b, '[', '](https://)'); return { text: r.text, at: a === b ? r.at : r.at - 1 }; },
   img: (t, a, b) => { const r = wrap(t, a, b, '![', '](https://)'); return { text: r.text, at: r.at + (a === b ? 0 : -1) }; },
   // Blocks go on their own lines after the caret's line.
-  table: (t, a, b) => block(t, b, TABLE, 2), hr: (t, a, b) => block(t, b, '---', 3),
+  table: (t, a, b) => tableKey(t, b, 'AddColumn') || block(t, b, TABLE, 2), // inside a table: one more column
+  hr: (t, a, b) => block(t, b, '---', 3),
 };
 function block(t, pos, s, caret) {
   const le = (t.indexOf('\n', pos) + 1 || t.length + 1) - 1, lead = le ? '\n' : '';
@@ -304,6 +330,11 @@ ed.addEventListener('keydown', e => {
     e.preventDefault();
     return e.shiftKey ? step(history.redo, history.undo) : step(history.undo, history.redo);
   }
+  if (['Tab', 'Enter', 'Backspace', 'Delete'].includes(e.key) && !e.metaKey && !e.ctrlKey) {
+    const sel = selection();
+    const r = sel && sel[0] === sel[1] && tableKey(notes[view.current].text, sel[1], e.shiftKey && e.key === 'Tab' ? 'ShiftTab' : e.key);
+    if (r) { e.preventDefault(); return r.text === notes[view.current].text ? setCaret(r.at) : setText(r.text, r.at); }
+  }
   const key = (e.metaKey || e.ctrlKey) && { b: 'b', i: 'i', u: 'u' }[e.key.toLowerCase()];
   if (key) { e.preventDefault(); return act(key); }
   if (e.key !== 'Enter') return;
@@ -319,6 +350,8 @@ ed.addEventListener('paste', e => {
   e.preventDefault();
   const sel = selection();
   if (!sel) return;
+  const file = [...e.clipboardData.files].find(f => f.type.startsWith('image/'));
+  if (file) return void pasteImage(file, sel);
   const t = notes[view.current].text, add = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
   setText(t.slice(0, sel[0]) + add + t.slice(sel[1]), sel[0] + add.length);
 });
@@ -532,6 +565,60 @@ $('#settings form').onsubmit = () => {
   sync();
 };
 
+/* ---------- pasted images ---------- */
+// A pasted image is shrunk, kept in this browser's cache at once, and uploaded to the notes repo
+// (images/…) on the next sync, so every device can show it. The note only holds ![](images/…).
+const IMG_CACHE = 'frog-img', imgReq = p => new Request(new URL(`__img/${p}`, location.href)), imgs = {};
+const queue = { get: () => JSON.parse(localStorage['frog.imgQueue'] || '[]'), set: q => (localStorage['frog.imgQueue'] = JSON.stringify(q)) };
+
+async function pasteImage(file, [a, b]) {
+  let blob = file, ext = 'gif';
+  if (file.type !== 'image/gif') { // keep GIFs animated; everything else becomes a JPEG up to 1600px wide
+    const bmp = await createImageBitmap(file), k = Math.min(1, 1600 / bmp.width);
+    const c = Object.assign(document.createElement('canvas'), { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; // transparent screenshots would turn black in a JPEG
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+    ext = 'jpg';
+  }
+  const path = `images/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${ext}`;
+  await (await caches.open(IMG_CACHE)).put(imgReq(path), new Response(blob, { headers: { 'Content-Type': blob.type } }));
+  queue.set([...queue.get(), path]);
+  const t = notes[view.current].text, md = `${a && t[a - 1] !== '\n' ? '\n' : ''}![](${path})\n`; // on a line of its own
+  setText(t.slice(0, a) + md + t.slice(b), a + md.length);
+}
+
+// Show images[data-img]: from the cache, or fetched once from the notes repo (private, so it needs the token).
+function loadImg(p) {
+  return (imgs[p] ??= (async () => {
+    const c = await caches.open(IMG_CACHE);
+    let r = await c.match(imgReq(p));
+    if (!r && cfg.token) {
+      const res = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${p}`, { headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github.raw' } });
+      if (!res.ok) return delete imgs[p], ''; // not uploaded yet from the other device: try again later
+      await c.put(imgReq(p), res.clone());
+      r = res;
+    }
+    return r ? URL.createObjectURL(await r.blob()) : (delete imgs[p], '');
+  })().catch(() => (delete imgs[p], '')));
+}
+const showImgs = root => root.querySelectorAll('img[data-img]').forEach(async img => { const u = await loadImg(img.dataset.img); if (u) img.src = u; });
+
+async function pushImgs() {
+  for (const path of queue.get()) {
+    const r = await (await caches.open(IMG_CACHE)).match(imgReq(path));
+    if (r) {
+      const blob = await r.blob();
+      const content = await new Promise(ok => { const f = new FileReader(); f.onload = () => ok(f.result.split(',')[1]); f.readAsDataURL(blob); });
+      await api(`contents/${path}`, { method: 'PUT', body: JSON.stringify({ message: path, content }) })
+        .catch(e => { if (e.status !== 422) throw e; }); // 422: already uploaded
+    }
+    queue.set(queue.get().filter(p => p !== path));
+  }
+}
+
 /* ---------- GitHub sync ---------- */
 
 async function api(path, opt = {}) {
@@ -619,6 +706,7 @@ async function sync() {
   syncing = true;
   status('동기화 중…');
   try {
+    await pushImgs();
     await push();
     await pull();
     await syncCats();

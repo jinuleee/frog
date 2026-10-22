@@ -53,6 +53,7 @@ export const esc = s => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 // No lookbehind in these regexes: older iPhone Safari cannot parse it.
 const mk = s => `<span class="mk">${s}</span>`;
 const safe = u => /^https?:\/\//.test(u); // only web links become clickable or load images
+export const IMG = /^images\/[\w.-]+$/; // pasted images, stored in the notes repo; app.js loads them
 // Code, images and links are set aside first so emphasis rules never reach inside a URL.
 function inline(s) { // s is already escaped
   const kept = [];
@@ -61,7 +62,8 @@ function inline(s) { // s is already escaped
     .replace(/`([^`]+)`/g, (_, c) => hold(`${mk('`')}<code>${c}</code>${mk('`')}`))
     .replace(/\[\[([^\]]+)\]\]/g, (_, t) => hold(`${mk('[[')}<a class="wiki" data-note="${t}">${t}</a>${mk(']]')}`))
     .replace(/\[\^([^\]\s]+)\]/g, (_, id) => hold(`<sup class="fn" data-fn="${id}">${mk('[^')}${id}${mk(']')}</sup>`))
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (all, alt, u) => hold(mk(all) + (safe(u) ? `<img src="${u}" alt="${alt}" contenteditable="false">` : '')))
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (all, alt, u) => hold(mk(all) + (safe(u) ? `<img src="${u}" alt="${alt}" contenteditable="false">`
+      : IMG.test(u) ? `<img data-img="${u}" alt="${alt}" contenteditable="false">` : '')))
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, u) => hold(`${mk('[')}${safe(u) ? `<a class="url" href="${u}">${t}</a>` : t}${mk(`](${u})`)}`))
     .replace(/(^|\s)(https?:\/\/[^\s<]+)/g, (_, p, u) => p + hold(`<a class="url" href="${u}">${u}</a>`))
     .replace(/(\*\*|__)(\S(?:.*?\S)?)\1/g, (_, m, t) => `${mk(m)}<b>${t}</b>${mk(m)}`)
@@ -112,6 +114,44 @@ export function renderLines(text) {
 }
 
 const isSep = l => /^\s*\|[\s|:-]*-[\s|:-]*$/.test(l || '');
+
+const isRow = l => /^\s*\|.*\|\s*$/.test(l) && !isSep(l);
+
+// Keys inside a table, like Bear: Tab/Shift+Tab move between cells, Enter adds a row
+// (Enter on an empty row leaves the table), Backspace/Delete never eat a cell border.
+// Returns null when the caret is not in a table row, so the key works as usual.
+export function tableKey(text, pos, key) {
+  const lines = text.split('\n');
+  let i = text.slice(0, pos).split('\n').length - 1;
+  if (!isRow(lines[i])) return null;
+  const starts = (k, l = lines[k]) => { // where each line begins, and where each cell's text begins
+    const base = lines.slice(0, k).reduce((s, x) => s + x.length + 1, 0), out = [];
+    for (let p = l.indexOf('|'); p >= 0 && p < l.lastIndexOf('|'); p = l.indexOf('|', p + 1)) out.push(base + p + 1 + (l[p + 1] === ' '));
+    return { base, cells: out };
+  };
+  const { base } = starts(i), at = pos - base, line = lines[i];
+  if (key === 'Backspace') return line[at - 1] === '|' ? { text, at: pos } : null;
+  if (key === 'Delete') return line[at] === '|' ? { text, at: pos } : null;
+  const newRow = k => { // empty row after line k, caret in its first cell
+    const end = starts(k).base + lines[k].length, cols = lines[k].split('|').length - 2;
+    return { text: text.slice(0, end) + '\n|' + '  |'.repeat(cols) + text.slice(end), at: end + 3 };
+  };
+  if (key === 'Enter') return line.replace(/[\s|]/g, '') ? newRow(i) : { text: text.slice(0, base) + text.slice(base + line.length), at: base };
+  // Tab: every cell of this table in reading order
+  let top = i, end = i;
+  while (top > 0 && (isRow(lines[top - 1]) || isSep(lines[top - 1]))) top--;
+  while (end < lines.length - 1 && (isRow(lines[end + 1]) || isSep(lines[end + 1]))) end++;
+  const all = [];
+  for (let k = top; k <= end; k++) if (isRow(lines[k])) all.push(...starts(k).cells);
+  const cur = all.filter(s => s <= pos).length - 1;
+  if (key === 'AddColumn') {
+    const out = lines.map((l, k) => (k < top || k > end ? l : l.replace(/\s*$/, '') + (isSep(l) ? ' --- |' : '  |')));
+    return { text: out.join('\n'), at: pos };
+  }
+  if (key === 'Tab') return cur + 1 < all.length ? { text, at: all[cur + 1] } : newRow(end);
+  if (key === 'ShiftTab') return { text, at: all[Math.max(cur - 1, 0)] };
+  return null;
+}
 
 // Toolbar: wrap the selection in marks (or drop empty marks at the caret, ready to type into).
 export const wrap = (text, a, b, open, close = open) =>

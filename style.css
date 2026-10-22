@@ -148,12 +148,13 @@ body:not(.side-closed) .showside { display: none; } /* the list's menu button on
 #text .codeblock, #text .fence { padding: 0 12px; }
 #text .tag { color: var(--text); background: var(--sel); border-radius: 1em; padding: 1px .55em; font-size: .92em; }
 /* Tables: each "| a | b |" line is a grid row off the caret line; on it the raw pipes show for editing. */
-#text > .tr:not(.active) { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); border: 1px solid var(--line); margin-top: -1px; line-height: 1.5; }
-#text > .tr:not(.active) > .mk { display: none; }
-#text > .tr:not(.active) .td { padding: 7px 12px; }
-#text > .tr:not(.active) .td ~ .td { border-left: 1px solid var(--line); }
-#text > .tr.th:not(.active) { font-weight: 600; background: var(--sel); margin-top: .5em; }
-#text > .tsep:not(.active) { font-size: 0; line-height: 0; }
+#text > .tr { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); border: 1px solid var(--line); margin-top: -1px; line-height: 1.5; }
+#text > .tr > .mk { display: none; } /* pipes stay in the text but never show; edit cells directly */
+#text > .tr .td { padding: 8px 14px; min-height: 2.5em; }
+#text > .tr .td ~ .td { border-left: 1px solid var(--line); }
+#text > .tr.th { font-weight: 600; background: color-mix(in srgb, var(--sel) 70%, var(--bg)); margin-top: .6em; border-radius: 8px 8px 0 0; }
+#text > .tr:has(+ :not(.tr, .tsep)), #text > .tr:last-child { border-radius: 0 0 8px 8px; margin-bottom: .6em; }
+#text > .tsep { font-size: 0; line-height: 0; height: 0; overflow: hidden; }
 /* Formatting bar floating at the bottom of the writing area, like Bear */
 #editor { position: relative; }
 #tools { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: grid; gap: 4px; justify-items: center; max-width: calc(100% - 24px); }

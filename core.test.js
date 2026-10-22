@@ -1,7 +1,7 @@
 // Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix } from './core.js';
+import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey } from './core.js';
 
 // What the editor shows as plain text must equal the note, or the caret drifts.
 const plain = html => html.split('</div>').slice(0, -1)
@@ -136,4 +136,26 @@ test('toolbar: wrap selection and toggle line starters', () => {
   assert.equal(linePrefix('- 사과', 3, '1. ').text, '1. 사과');
   assert.equal(linePrefix('3. 사과', 3, '1. ').text, '사과');
   assert.equal(linePrefix('# 제목', 3, '> ').text, '> 제목');
+});
+
+test('table keys: tab between cells, enter adds a row, borders are kept', () => {
+  const s = '앞\n| 항목 | 내용 |\n| --- | --- |\n| a | b |';
+  const p = s.indexOf('항목');
+  assert.equal(tableKey(s, p, 'Tab').at, s.indexOf('내용'));
+  assert.equal(tableKey(s, s.indexOf('내용'), 'Tab').at, s.indexOf('a |')); // skips the --- line
+  assert.equal(tableKey(s, s.indexOf('a |'), 'ShiftTab').at, s.indexOf('내용'));
+  const r = tableKey(s, s.length - 2, 'Tab'); // last cell: a new row appears
+  assert.equal(r.text, s + '\n|  |  |');
+  assert.equal(r.at, s.length + 3);
+  assert.equal(tableKey(s, s.indexOf('a'), 'Enter').text, '앞\n| 항목 | 내용 |\n| --- | --- |\n| a | b |\n|  |  |');
+  assert.deepEqual(tableKey(r.text, r.at, 'Enter'), { text: s + '\n', at: s.length + 1 }); // empty row: leave the table
+  assert.deepEqual(tableKey(s, s.indexOf('내용') - 1, 'Backspace'), { text: s, at: s.indexOf('내용') - 1 });
+  assert.equal(tableKey(s, s.indexOf('내용'), 'Backspace'), null);
+  assert.equal(tableKey(s, 1, 'Tab'), null);
+  assert.equal(tableKey(s, s.indexOf('a'), 'AddColumn').text, '앞\n| 항목 | 내용 |  |\n| --- | --- | --- |\n| a | b |  |');
+});
+
+test('pasted images point into the notes repo', () => {
+  assert.match(renderLines('![](images/k3x.jpg)'), /<img data-img="images\/k3x.jpg"/);
+  assert.doesNotMatch(renderLines('![](../secret.png)'), /<img/);
 });
