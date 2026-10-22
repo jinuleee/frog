@@ -8,8 +8,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-512.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=12">
-<script type="module" src="app.js?v=12"></script>
+<link rel="stylesheet" href="style.css?v=13">
+<script type="module" src="app.js?v=13"></script>
 </head>
 <body data-pane="list">
 <aside id="side">
@@ -79,6 +79,13 @@
     </aside>
   </div>
   <div id="tools" aria-label="서식">
+    <div class="row tbl" hidden>
+      <button data-act="addRow" title="아래에 행 추가 (Enter)">+ 행</button>
+      <button data-act="delRow" title="이 행 삭제">− 행</button>
+      <span class="gap"></span>
+      <button data-act="addCol" title="오른쪽에 열 추가">+ 열</button>
+      <button data-act="delCol" title="이 열 삭제">− 열</button>
+    </div>
     <div class="row more" hidden>
       <button data-act="u" title="밑줄 (Ctrl/⌘+U)"><u>U</u></button>
       <button data-act="s" title="취소선"><s>S</s></button>

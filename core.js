@@ -80,6 +80,7 @@ function inline(s) { // s is already escaped
 export function renderLines(text) {
   if (!text) return ''; // empty editor shows the CSS placeholder
   let fence = false;
+  const cols = colWidths(text.split('\n'));
   return text.split('\n').map((line, i, all) => {
     const e = esc(line);
     let cls = '', html, m;
@@ -92,8 +93,8 @@ export function renderLines(text) {
       else {
         const parts = e.split('|'), last = parts.length - 1;
         cls = isSep(all[i + 1]) ? 'tr th' : 'tr';
-        html = parts.map((p, k) => (k === 0 || k === last ? mk(p) : `<span class="td">${inline(p)}</span>`)).join(mk('|'));
-        return `<div class="${cls}" style="--cols:${last - 1}">${html}</div>`;
+        html = parts.map((p, k) => (k === 0 || k === last ? mk(p) : cell(p))).join(mk('|'));
+        return `<div class="${cls}" style="grid-template-columns:${cols[i]}">${html}</div>`;
       }
     }
     else if ((m = line.match(/^#{1,6}\s/))) { cls = 'h' + (m[0].length - 1); html = mk(m[0]) + inline(e.slice(m[0].length)); }
@@ -115,7 +116,29 @@ export function renderLines(text) {
 
 const isSep = l => /^\s*\|[\s|:-]*-[\s|:-]*$/.test(l || '');
 
-const isRow = l => /^\s*\|.*\|\s*$/.test(l) && !isSep(l);
+// "| a |" pads each cell with one space; that padding is hidden so the cell text starts flush and never
+// wraps on its own. An empty cell keeps its spaces visible, so there is something to click into.
+const cell = p => {
+  const m = p.length > 2 && p.match(/^( ?)(.*?)( ?)$/s);
+  return m ? mk(m[1]) + `<span class="td">${inline(m[2])}</span>` + mk(m[3]) : `<span class="td">${inline(p)}</span>`;
+};
+
+const isRow = l => /^\s*\|.*\|\s*$/.test(l || '') && !isSep(l);
+
+// Column widths for each table row: every column grows with its longest cell (all rows of a table share them).
+function colWidths(lines) {
+  const out = {};
+  for (let i = 0; i < lines.length; ) {
+    if (!isRow(lines[i])) { i++; continue; }
+    const block = [];
+    while (isRow(lines[i]) || isSep(lines[i])) block.push(i++);
+    const w = [];
+    for (const k of block) if (isRow(lines[k])) lines[k].split('|').slice(1, -1).forEach((c, j) => (w[j] = Math.max(w[j] || 0, c.trim().length)));
+    const tpl = w.map(n => `minmax(0,${Math.min(Math.max(n, 6), 30)}fr)`).join(' ');
+    for (const k of block) out[k] = tpl;
+  }
+  return out;
+}
 
 // Keys inside a table, like Bear: Tab/Shift+Tab move between cells, Enter adds a row
 // (Enter on an empty row leaves the table), Backspace/Delete never eat a cell border.
@@ -124,16 +147,18 @@ export function tableKey(text, pos, key) {
   const lines = text.split('\n');
   let i = text.slice(0, pos).split('\n').length - 1;
   if (!isRow(lines[i])) return null;
-  const starts = (k, l = lines[k]) => { // where each line begins, and where each cell's text begins
-    const base = lines.slice(0, k).reduce((s, x) => s + x.length + 1, 0), out = [];
+  const starts = (k, arr = lines) => { // where each line begins, and where each cell's text begins
+    const l = arr[k], base = arr.slice(0, k).reduce((s, x) => s + x.length + 1, 0), out = [];
     for (let p = l.indexOf('|'); p >= 0 && p < l.lastIndexOf('|'); p = l.indexOf('|', p + 1)) out.push(base + p + 1 + (l[p + 1] === ' '));
     return { base, cells: out };
   };
   const { base } = starts(i), at = pos - base, line = lines[i];
-  if (key === 'Backspace') return line[at - 1] === '|' ? { text, at: pos } : null;
-  if (key === 'Delete') return line[at] === '|' ? { text, at: pos } : null;
-  const newRow = k => { // empty row after line k, caret in its first cell
-    const end = starts(k).base + lines[k].length, cols = lines[k].split('|').length - 2;
+  const wall = s => s === '|' || s === ' |' || s === '| '; // a border, or a border with its padding space
+  if (key === 'Backspace') return wall(line[at - 1]) || wall(line.slice(at - 2, at)) && line[at - 1] === ' ' ? { text, at: pos } : null;
+  if (key === 'Delete') return wall(line[at]) || wall(line.slice(at, at + 2)) && line[at] === ' ' ? { text, at: pos } : null;
+  const newRow = k => { // empty row after line k (after the |---| line for the header), caret in its first cell
+    if (isSep(lines[k + 1])) k++;
+    const end = starts(k).base + lines[k].length, cols = lines[i].split('|').length - 2;
     return { text: text.slice(0, end) + '\n|' + '  |'.repeat(cols) + text.slice(end), at: end + 3 };
   };
   if (key === 'Enter') return line.replace(/[\s|]/g, '') ? newRow(i) : { text: text.slice(0, base) + text.slice(base + line.length), at: base };
@@ -144,9 +169,29 @@ export function tableKey(text, pos, key) {
   const all = [];
   for (let k = top; k <= end; k++) if (isRow(lines[k])) all.push(...starts(k).cells);
   const cur = all.filter(s => s <= pos).length - 1;
-  if (key === 'AddColumn') {
-    const out = lines.map((l, k) => (k < top || k > end ? l : l.replace(/\s*$/, '') + (isSep(l) ? ' --- |' : '  |')));
-    return { text: out.join('\n'), at: pos };
+  const col = line.slice(0, at).split('|').length - 2; // which column the caret is in
+  if (key === 'AddColumn' || key === 'DelColumn') { // after / at the caret's column, in every row
+    if (key === 'DelColumn' && line.split('|').length <= 3) return { text, at: pos }; // keep the last column
+    const out = lines.map((l, k) => {
+      if (k < top || k > end) return l;
+      const parts = l.split('|');
+      if (key === 'AddColumn') parts.splice(col + 2, 0, isSep(l) ? ' --- ' : '  ');
+      else parts.splice(col + 1, 1);
+      return parts.join('|');
+    });
+    const t = out.join('\n'), b = starts(i, out).cells;
+    return { text: t, at: key === 'AddColumn' ? b[col + 1] : b[Math.max(col - 1, 0)] };
+  }
+  if (key === 'AddRow') return newRow(i);
+  if (key === 'DelRow') {
+    const rows = [];
+    for (let k = top; k <= end; k++) if (isRow(lines[k])) rows.push(k);
+    let out = lines.slice();
+    if (rows.length === 1) out.splice(top, end - top + 1); // last row: the whole table goes
+    else if (isSep(lines[i + 1])) out.splice(i, 2), out.splice(i + 1, 0, lines[i + 1]); // header: next row becomes it
+    else out.splice(i, 1);
+    const t = out.join('\n');
+    return { text: t, at: Math.min(base, t.length) };
   }
   if (key === 'Tab') return cur + 1 < all.length ? { text, at: all[cur + 1] } : newRow(end);
   if (key === 'ShiftTab') return { text, at: all[Math.max(cur - 1, 0)] };

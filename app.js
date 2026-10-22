@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey, IMG } from './core.js?v=12';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey, IMG } from './core.js?v=13';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -224,6 +224,7 @@ document.addEventListener('selectionchange', () => {
   }
   if (el.nodeType === 3 && hidden(el)) return setCaret(sel[1]);
   caretWas = sel[1];
+  $('#tools .tbl').hidden = !inTable(notes[view.current].text, sel[1]);
 });
 
 // Date rail: created on top, last edit at the bottom; the thumb marks the caret's line out of all lines.
@@ -255,6 +256,9 @@ const ACTS = {
   // Blocks go on their own lines after the caret's line.
   table: (t, a, b) => tableKey(t, b, 'AddColumn') || block(t, b, TABLE, 2), // inside a table: one more column
   hr: (t, a, b) => block(t, b, '---', 3),
+  // Shown only while the caret is in a table: grow or shrink it.
+  addRow: (t, a, b) => tableKey(t, b, 'AddRow'), delRow: (t, a, b) => tableKey(t, b, 'DelRow'),
+  addCol: (t, a, b) => tableKey(t, b, 'AddColumn'), delCol: (t, a, b) => tableKey(t, b, 'DelColumn'),
 };
 function block(t, pos, s, caret) {
   const le = (t.indexOf('\n', pos) + 1 || t.length + 1) - 1, lead = le ? '\n' : '';
@@ -265,7 +269,7 @@ function act(name) {
   if (!n) return;
   if (name === 'more') return void ($('#tools .more').hidden = !$('#tools .more').hidden);
   const [a, b] = (document.activeElement === ed && selection()) || lastSel || [n.text.length, n.text.length];
-  const r = ACTS[name](n.text, a, b);
+  const r = ACTS[name](n.text, a, b) || { text: n.text, at: b };
   ed.focus();
   setText(r.text, r.at);
 }

@@ -118,10 +118,10 @@ test('tables keep the text and become grid rows', () => {
   const s = '| 항목 | 내용 |\n| --- | :-: |\n| 상태 | **좋음** |\n|a|';
   const h = renderLines(s);
   assert.equal(plain(h), s);
-  assert.match(h, /class="tr th" style="--cols:2"/);
+  assert.match(h, /class="tr th" style="grid-template-columns:minmax\(0,6fr\) minmax\(0,6fr\)"/); // grows with the longest cell
   assert.match(h, /class="tsep"/);
-  assert.match(h, /<span class="td"> <span class="mk">\*\*<\/span><b>좋음<\/b>/);
-  assert.match(h, /style="--cols:1"/);
+  assert.match(h, /<span class="mk"> <\/span><span class="td"><span class="mk">\*\*<\/span><b>좋음<\/b><span class="mk">\*\*<\/span><\/span><span class="mk"> <\/span>/); // padding hidden
+  assert.match(renderLines('|  | a |'), /<span class="td">  <\/span>/); // empty cell stays clickable
 });
 
 test('toolbar: wrap selection and toggle line starters', () => {
@@ -150,9 +150,22 @@ test('table keys: tab between cells, enter adds a row, borders are kept', () => 
   assert.equal(tableKey(s, s.indexOf('a'), 'Enter').text, '앞\n| 항목 | 내용 |\n| --- | --- |\n| a | b |\n|  |  |');
   assert.deepEqual(tableKey(r.text, r.at, 'Enter'), { text: s + '\n', at: s.length + 1 }); // empty row: leave the table
   assert.deepEqual(tableKey(s, s.indexOf('내용') - 1, 'Backspace'), { text: s, at: s.indexOf('내용') - 1 });
-  assert.equal(tableKey(s, s.indexOf('내용'), 'Backspace'), null);
+  assert.deepEqual(tableKey(s, s.indexOf('내용'), 'Backspace'), { text: s, at: s.indexOf('내용') }); // padding space stays too
+  assert.equal(tableKey(s, s.indexOf('용'), 'Backspace'), null);
+  assert.deepEqual(tableKey(s, s.indexOf('목') + 1, 'Delete'), { text: s, at: s.indexOf('목') + 1 });
   assert.equal(tableKey(s, 1, 'Tab'), null);
-  assert.equal(tableKey(s, s.indexOf('a'), 'AddColumn').text, '앞\n| 항목 | 내용 |  |\n| --- | --- | --- |\n| a | b |  |');
+  assert.equal(tableKey(s, s.indexOf('b'), 'AddColumn').text, '앞\n| 항목 | 내용 |  |\n| --- | --- | --- |\n| a | b |  |');
+  const mid = tableKey(s, s.indexOf('a'), 'AddColumn'); // after the caret's column, caret moves into it
+  assert.equal(mid.text, '앞\n| 항목 |  | 내용 |\n| --- | --- | --- |\n| a |  | b |');
+  assert.equal(mid.text.slice(mid.at, mid.at + 3), ' | ');
+  assert.equal(tableKey(s, s.indexOf('a'), 'DelColumn').text, '앞\n| 내용 |\n| --- |\n| b |');
+  assert.equal(tableKey('| a |\n| --- |', 2, 'DelColumn').text, '| a |\n| --- |'); // last column stays
+  assert.equal(tableKey(s, s.indexOf('a'), 'DelRow').text, '앞\n| 항목 | 내용 |\n| --- | --- |');
+  assert.equal(tableKey(s, s.indexOf('항목'), 'DelRow').text, '앞\n| a | b |\n| --- | --- |'); // next row becomes the header
+  assert.equal(tableKey('앞\n| a |\n| --- |\n뒤', 4, 'DelRow').text, '앞\n뒤');
+  const add = tableKey(s, s.indexOf('항목'), 'AddRow'); // from the header: lands under the |---| line
+  assert.equal(add.text, '앞\n| 항목 | 내용 |\n| --- | --- |\n|  |  |\n| a | b |');
+  assert.equal(add.at, add.text.indexOf('|  |') + 2);
 });
 
 test('pasted images point into the notes repo', () => {
