@@ -1,7 +1,7 @@
 // Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter, renameTag, removeTag } from './core.js';
+import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo } from './core.js';
 
 // What the editor shows as plain text must equal the note, or the caret drifts.
 const plain = html => html.split('</div>').slice(0, -1)
@@ -93,4 +93,13 @@ test('color text keeps the exact text', () => {
   assert.match(h, /<span class="c-red">뉴스<\/span>/);
   assert.match(h, /<span class="c-blue">.*<b>굵은 파랑<\/b>/);
   assert.doesNotMatch(h, /c-없는색/);
+});
+
+test('todo toggle: make, check, uncheck; count open ones', () => {
+  assert.deepEqual(toggleTodo('장보기\n우유', 5), { text: '장보기\n- [ ] 우유', at: 11 });
+  assert.deepEqual(toggleTodo('- 우유', 3), { text: '- [ ] 우유', at: 7 });
+  assert.deepEqual(toggleTodo('  - [ ] 우유', 9), { text: '  - [x] 우유', at: 9 });
+  assert.equal(toggleTodo('- [x] 우유', 7).text, '- [ ] 우유');
+  assert.equal(openTodos('- [ ] a\n- [x] b\n  * [ ] c'), 2);
+  assert.equal(hasOpenTodo('- [x] done'), false);
 });

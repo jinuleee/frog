@@ -110,6 +110,20 @@ export function enter(text, start, end) {
   return { text: text.slice(0, start) + '\n' + next + text.slice(end), at: start + 1 + next.length };
 }
 
+export const hasOpenTodo = text => /^\s*[-*+] \[ \]/m.test(text);
+export const openTodos = text => (text.match(/^\s*[-*+] \[ \]/gm) || []).length;
+
+// One key for to-dos, like Bear: a plain line becomes "- [ ] ", a list item gains a box, a box gets checked/unchecked.
+export function toggleTodo(text, pos) {
+  const ls = text.lastIndexOf('\n', pos - 1) + 1, le = (text.indexOf('\n', pos) + 1 || text.length + 1) - 1;
+  const line = text.slice(ls, le);
+  let next, m;
+  if ((m = line.match(/^(\s*[-*+] \[)([ xX])\]/))) next = m[1] + (m[2] === ' ' ? 'x' : ' ') + ']' + line.slice(m[0].length);
+  else if ((m = line.match(/^(\s*)[-*+] /))) next = `${m[1]}- [ ] ` + line.slice(m[0].length);
+  else next = line.replace(/^(\s*)/, '$1- [ ] ');
+  return { text: text.slice(0, ls) + next + text.slice(le), at: Math.max(ls, pos + next.length - line.length) };
+}
+
 // btoa only takes Latin-1, so Korean text goes through UTF-8 bytes first.
 export function b64encode(s) {
   let bin = '';

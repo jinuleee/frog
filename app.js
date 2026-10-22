@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag } from './core.js?v=6';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo } from './core.js?v=7';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -32,7 +32,9 @@ function visible() {
   const q = view.q.toLowerCase();
   return Object.values(notes)
     .filter(n => !n.gone
-      && (view.filter === 'trashed' ? n.trashed : !n.trashed && n.archived === (view.filter === 'archived'))
+      && (view.filter === 'trashed' ? n.trashed
+        : view.filter === 'todo' ? !n.trashed && !n.archived && hasOpenTodo(n.text)
+        : !n.trashed && n.archived === (view.filter === 'archived'))
       && (!view.tag || tags(n.text).some(t => t === view.tag || t.startsWith(view.tag + '/')))
       && (!view.cat || n.category === view.cat)
       && (!q || n.text.toLowerCase().includes(q)))
@@ -45,7 +47,9 @@ function renderSide() {
   const live = Object.values(notes).filter(n => !n.gone && !n.trashed);
   $('#cats').innerHTML = cats.map(c => `<li><button data-cat="${esc(c.name)}" aria-current="${view.cat === c.name}">
     <i class="swatch" style="background:${esc(c.color)}"></i>${esc(c.name)}<span class="count">${live.filter(n => n.category === c.name).length}</span></button></li>`).join('')
-    || '<li class="none-side">카테고리 관리에서 추가하세요</li>';
+    || '<li class="none-side">No categories yet</li>';
+  const todo = live.filter(n => !n.archived && hasOpenTodo(n.text)).length;
+  $('#todoCount').textContent = todo || '';
   for (const g of document.querySelectorAll('.group')) {
     const open = !folds[g.dataset.group];
     g.classList.toggle('folded', !open);
@@ -68,7 +72,7 @@ function renderList() {
     return `<li><button data-id="${esc(n.id)}" aria-current="${n.id === view.current}">
       <strong>${catColor(n.category) ? `<i class="swatch" style="background:${esc(catColor(n.category))}" title="${esc(n.category)}"></i>` : ''}${n.pinned ? '<span class="pin">고정</span>' : ''}${esc(title(n.text))}</strong>
       <span>${esc(body)}</span>
-      <time>${new Date(n.updated).toLocaleDateString('ko-KR')}</time></button></li>`;
+      <time>${new Date(n.updated).toLocaleDateString('ko-KR')}${openTodos(n.text) ? ` · <span class="todo-left">할 일 ${openTodos(n.text)}</span>` : ''}</time></button></li>`;
   }).join('') || '<li class="none">노트가 없습니다</li>';
 }
 
@@ -165,20 +169,27 @@ function markActive() {
 }
 document.addEventListener('selectionchange', markActive);
 
-// Date rail: created on top, last edit at the bottom, a thumb that follows the scroll (like a forum timeline).
-function rail() {
-  if ($('#rail').hidden) return;
-  const max = ed.scrollHeight - ed.clientHeight, r = max > 0 ? ed.scrollTop / max : 0;
-  const lines = ed.children.length || 1;
-  const first = [...ed.children].findIndex(d => d.offsetTop + d.offsetHeight > ed.scrollTop);
-  $('.thumb').style.top = `calc(${r} * (100% - 44px))`;
-  $('#railPos').textContent = `${Math.max(first, 0) + 1} / ${lines}`;
-  $('#railLine').textContent = '줄';
-}
-ed.addEventListener('scroll', rail);
-
+// Date rail: created on top, last edit at the bottom; the thumb marks the caret's line out of all lines.
+// With no caret yet (note just opened), it marks the first line on screen instead.
 let lastSel = null; // the select box steals focus, so remember where the caret was
-document.addEventListener('selectionchange', () => { if (document.activeElement === ed) lastSel = selection(); });
+function rail() {
+  const n = notes[view.current];
+  if ($('#rail').hidden || !n) return;
+  const total = n.text.split('\n').length;
+  const line = lastSel ? n.text.slice(0, lastSel[1]).split('\n').length
+    : Math.max([...ed.children].findIndex(d => d.offsetTop + d.offsetHeight > ed.scrollTop), 0) + 1;
+  $('.thumb').style.top = `calc(${total > 1 ? (line - 1) / (total - 1) : 0} * (100% - 44px))`;
+  $('#railPos').textContent = `${line} / ${total}`;
+}
+ed.addEventListener('scroll', () => lastSel || rail());
+document.addEventListener('selectionchange', () => { if (document.activeElement === ed && (lastSel = selection())) rail(); });
+
+function todo() {
+  const n = notes[view.current], at = ((document.activeElement === ed && selection()) || lastSel || [n.text.length, n.text.length])[1], r = toggleTodo(n.text, at);
+  ed.focus();
+  setText(r.text, r.at);
+}
+$('#todoBtn').onclick = todo;
 $('#colorSel').onchange = e => {
   const c = e.target.value, n = notes[view.current];
   e.target.value = '';
@@ -239,6 +250,7 @@ ed.addEventListener('keydown', e => {
   }
   if (e.key !== 'Enter') return;
   e.preventDefault();
+  if (e.metaKey || e.ctrlKey) return todo();
   const sel = selection();
   if (!sel) return;
   const r = enter(notes[view.current].text, ...sel);
@@ -285,6 +297,7 @@ ed.addEventListener('click', e => {
 function open(id) {
   const prev = notes[view.current];
   if (prev && prev.id !== id && !prev.text.trim() && !prev.sha) delete notes[prev.id]; // drop blank new notes
+  if (view.current !== id) lastSel = null;
   view.current = id;
   save(); render();
   setPane(id ? 'editor' : 'list');

@@ -8,8 +8,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-512.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=6">
-<script type="module" src="app.js?v=6"></script>
+<link rel="stylesheet" href="style.css?v=7">
+<script type="module" src="app.js?v=7"></script>
 </head>
 <body data-pane="list">
 <aside id="side">
@@ -18,21 +18,22 @@
     <img src="icon-512.png" alt=""> frog
   </header>
   <nav aria-label="보기">
-    <button data-filter="all"><svg class="i" viewBox="0 0 24 24"><path d="m12 3-9 5 9 5 9-5-9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg>노트</button>
-    <button data-filter="archived"><svg class="i" viewBox="0 0 24 24"><path d="M2 3h20v4H2zM4 7v13h16V7M9 12h6"/></svg>보관함</button>
-    <button data-filter="trashed"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>휴지통</button>
+    <button data-filter="all"><svg class="i" viewBox="0 0 24 24"><path d="m12 3-9 5 9 5 9-5-9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg>Notes</button>
+    <button data-filter="todo"><svg class="i" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg>Todo<span class="count" id="todoCount"></span></button>
+    <button data-filter="archived"><svg class="i" viewBox="0 0 24 24"><path d="M2 3h20v4H2zM4 7v13h16V7M9 12h6"/></svg>Archive</button>
+    <button data-filter="trashed"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Trash</button>
   </nav>
 
   <section class="group" data-group="cats">
-    <h2><button class="fold" aria-expanded="true"><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>카테고리</button></h2>
+    <h2><button class="fold" aria-expanded="true"><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><svg class="i" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg>Categories</button></h2>
     <ul id="cats"></ul>
-    <button id="catManage" class="more"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>카테고리 관리</button>
+    <button id="catManage" class="more"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Manage categories</button>
   </section>
 
   <section class="group" data-group="tags">
-    <h2><button class="fold" aria-expanded="true"><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>태그</button></h2>
+    <h2><button class="fold" aria-expanded="true"><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><svg class="i" viewBox="0 0 24 24"><path d="M3 12V3h9l9 9-9 9-9-9Zm4.5-4.5h.01"/></svg>Tags</button></h2>
     <ul id="tags" class="tree"></ul>
-    <button id="tagManage" class="more"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>태그 관리</button>
+    <button id="tagManage" class="more"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Manage tags</button>
   </section>
 
   <footer>
@@ -60,6 +61,7 @@
       <option value="초록">초록</option><option value="파랑">파랑</option><option value="보라">보라</option>
       <option value="분홍">분홍</option><option value="회색">회색</option>
     </select>
+    <button id="todoBtn" title="할 일로 만들기 · 체크 (Ctrl/⌘ + Enter)">할 일</button>
     <span class="spacer"></span>
     <button id="pinBtn">고정</button>
     <button id="archiveBtn">보관</button>
@@ -71,7 +73,7 @@
          data-placeholder="# 제목&#10;&#10;내용을 쓰고 #태그 또는 #업무/회의 처럼 정리하세요."></div>
     <aside id="rail" aria-hidden="true">
       <span class="when"><small>작성</small><b id="railTop"></b></span>
-      <div class="track"><div class="thumb"><b id="railPos"></b><small id="railLine"></small></div></div>
+      <div class="track"><div class="thumb"><b id="railPos"></b></div></div>
       <span class="when"><small>수정</small><b id="railBottom"></b></span>
     </aside>
   </div>
