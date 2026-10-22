@@ -23,6 +23,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* flex rules below would otherwise override the hidden attribute */
 body {
   margin: 0; height: 100dvh; display: grid; grid-template-columns: 210px 300px 1fr;
   background: var(--bg); color: var(--text);
