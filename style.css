@@ -78,6 +78,17 @@ ul { list-style: none; margin: 0; padding: 0; }
 #text:empty::before { content: attr(data-placeholder); color: var(--muted); white-space: pre-line; pointer-events: none; }
 /* Live markdown: marks stay visible but faint, the text around them takes the style. */
 #text .mk { color: var(--muted); opacity: .5; font-weight: 400; }
+#text > div:not(.active) .mk { display: none; }
+#text > .hr:not(.active) { border-top: 1px solid var(--line); margin: .8em 0; }
+/* Off the caret line, "-" shows as a bullet and "[ ]" as a checkbox; the text itself stays the same. */
+#text > div:not(.active) .dot, #text > div:not(.active) .box { font-size: 0; }
+#text > div:not(.active) .dot::before { content: "\2022"; font-size: 17px; padding: 0 .35em 0 .15em; }
+#text > div:not(.active) .box::before {
+  content: ""; display: inline-block; width: .95em; height: .95em; margin-right: .3em; vertical-align: -.12em;
+  border: 2px solid var(--accent); border-radius: 4px; font-size: 17px; box-sizing: border-box;
+}
+#text > div.done:not(.active) .box::before { content: "\2713"; background: var(--accent); color: var(--bg); font-size: 17px; line-height: .8; text-align: center; font-weight: 700; }
+#text img { display: block; max-width: 100%; max-height: 420px; border-radius: 8px; margin: 6px 0; }
 #text .h1 { font-size: 1.75em; font-weight: 700; line-height: 1.35; padding-top: .3em; }
 #text .h2 { font-size: 1.4em; font-weight: 700; line-height: 1.4; padding-top: .25em; }
 #text .h3 { font-size: 1.18em; font-weight: 700; }
@@ -92,6 +103,14 @@ ul { list-style: none; margin: 0; padding: 0; }
 #text .tag { color: var(--accent); background: var(--sel); border-radius: 4px; }
 #text .url { color: var(--accent); }
 #text .hr { color: var(--muted); letter-spacing: .3em; }
+#text .url { text-decoration: underline; text-underline-offset: 3px; }
+#text .url, #text .wiki, #text .fn { cursor: pointer; }
+#text .wiki { color: var(--accent); text-decoration: underline dotted; text-underline-offset: 3px; }
+#text mark { background: #f6e27a; color: #23281f; border-radius: 3px; padding: 0 2px; }
+#text u { text-underline-offset: 3px; }
+#text .fn { color: var(--accent); font-size: .75em; }
+#text .fndef { color: var(--muted); font-size: .9em; }
+#text .fnlabel { color: var(--accent); }
 .danger { color: #c0392b !important; font-weight: 600; }
 #empty { margin: auto; color: var(--muted); }
 

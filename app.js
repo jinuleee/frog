@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter } from './core.js';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter } from './core.js?v=4';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -47,7 +47,7 @@ function renderSide() {
 
 function renderList() {
   $('#items').innerHTML = visible().map(n => {
-    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\[[ xX]\]|[#*_>`~\[\]-]/g, '').trim().slice(0, 120);
+    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\[[ xX]\]|[#*_>`~=^\[\]-]/g, '').trim().slice(0, 120);
     return `<li><button data-id="${esc(n.id)}" aria-current="${n.id === view.current}">
       <strong>${n.pinned ? '<span class="pin">고정</span>' : ''}${esc(title(n.text))}</strong>
       <span>${esc(body)}</span>
@@ -128,7 +128,18 @@ function paint() {
   ed.innerHTML = painted = html;
   ed.dataset.id = n.id;
   if (sel) setCaret(sel[1]);
+  markActive();
 }
+
+// The line holding the caret shows its markdown marks; every other line shows the result only.
+function markActive() {
+  const s = getSelection();
+  let line = s.rangeCount && ed.contains(s.focusNode) && s.focusNode !== ed ? s.focusNode : null;
+  while (line && line.parentNode !== ed) line = line.parentNode;
+  for (const d of ed.querySelectorAll(':scope > .active')) if (d !== line) d.classList.remove('active');
+  line?.classList?.add('active');
+}
+document.addEventListener('selectionchange', markActive);
 
 function remember(n, force) {
   if (history.id !== n.id) Object.assign(history, { id: n.id, undo: [], redo: [] });
@@ -201,8 +212,24 @@ ed.addEventListener('click', e => {
     lines[i] = lines[i].replace(/\[([ xX])\]/, (_, c) => (c === ' ' ? '[x]' : '[ ]'));
     return setText(lines.join('\n'), offsetOf(ed, i + 1) - 1);
   }
+  // Links work on a plain click, like Bear; to edit one, put the caret next to it with the keyboard.
   const link = e.target.closest('a.url');
-  if (link && (e.metaKey || e.ctrlKey)) window.open(link.href, '_blank', 'noopener');
+  if (link) { e.preventDefault(); return window.open(link.href, '_blank', 'noopener'); }
+  const wiki = e.target.closest('a.wiki');
+  if (wiki) {
+    const want = wiki.dataset.note.trim().toLowerCase();
+    const hit = Object.values(notes).find(n => !n.gone && !n.trashed && title(n.text).toLowerCase() === want);
+    if (hit) return open(hit.id);
+    const now = Date.now(), id = crypto.randomUUID(); // [[new title]] creates that note
+    notes[id] = { id, text: `# ${wiki.dataset.note.trim()}\n\n`, created: now, updated: now, pinned: false, archived: false, trashed: false };
+    changed(notes[id]);
+    return open(id);
+  }
+  const fn = e.target.closest('.fn');
+  if (fn) {
+    const t = notes[view.current].text, at = t.search(new RegExp(`^\\[\\^${fn.dataset.fn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]:`, 'm'));
+    if (at >= 0) setCaret(at);
+  }
 });
 
 /* ---------- actions ---------- */

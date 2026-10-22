@@ -32,16 +32,31 @@ export function fromFile(id, raw) {
 
 export const esc = s => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
-// Live editor markup. Marks stay in the text (dimmed by CSS), so the rendered
-// textContent is always exactly the note text and the caret offset maps 1:1.
+// Live editor markup. Marks stay in the text (CSS hides them except on the line
+// being edited), so textContent is always exactly the note text and the caret maps 1:1.
+// No lookbehind in these regexes: older iPhone Safari cannot parse it.
 const mk = s => `<span class="mk">${s}</span>`;
-const inline = s => s // s is already escaped
-  .replace(/`([^`]+)`/g, (_, c) => `${mk('`')}<code>${c}</code>${mk('`')}`)
-  .replace(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/g, (_, m, t) => `${mk(m)}<b>${t}</b>${mk(m)}`)
-  .replace(/(^|[^*\w])([*_])(?=[^\s*_])(.+?)(?<=[^\s*_])\2(?![*\w])/g, (_, p, m, t) => `${p}${mk(m)}<i>${t}</i>${mk(m)}`)
-  .replace(/~~(?=\S)(.+?)(?<=\S)~~/g, (_, t) => `${mk('~~')}<s>${t}</s>${mk('~~')}`)
-  .replace(/(^|\s)(#[\p{L}\p{N}_\-/]+)/gu, '$1<span class="tag">$2</span>')
-  .replace(/https?:\/\/[^\s<]+/g, u => `<a class="url" href="${u}">${u}</a>`);
+const safe = u => /^https?:\/\//.test(u); // only web links become clickable or load images
+// Code, images and links are set aside first so emphasis rules never reach inside a URL.
+function inline(s) { // s is already escaped
+  const kept = [];
+  const hold = html => `\u0000${kept.push(html) - 1}\u0000`;
+  return s
+    .replace(/`([^`]+)`/g, (_, c) => hold(`${mk('`')}<code>${c}</code>${mk('`')}`))
+    .replace(/\[\[([^\]]+)\]\]/g, (_, t) => hold(`${mk('[[')}<a class="wiki" data-note="${t}">${t}</a>${mk(']]')}`))
+    .replace(/\[\^([^\]\s]+)\]/g, (_, id) => hold(`<sup class="fn" data-fn="${id}">${mk('[^')}${id}${mk(']')}</sup>`))
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (all, alt, u) => hold(mk(all) + (safe(u) ? `<img src="${u}" alt="${alt}" contenteditable="false">` : '')))
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, u) => hold(`${mk('[')}${safe(u) ? `<a class="url" href="${u}">${t}</a>` : t}${mk(`](${u})`)}`))
+    .replace(/(^|\s)(https?:\/\/[^\s<]+)/g, (_, p, u) => p + hold(`<a class="url" href="${u}">${u}</a>`))
+    .replace(/(\*\*|__)(\S(?:.*?\S)?)\1/g, (_, m, t) => `${mk(m)}<b>${t}</b>${mk(m)}`)
+    .replace(/(^|[^*\w])([*_])([^\s*_](?:.*?[^\s*_])?)\2(?![*\w])/g, (_, p, m, t) => `${p}${mk(m)}<i>${t}</i>${mk(m)}`)
+    .replace(/~~(\S(?:.*?\S)?)~~/g, (_, t) => `${mk('~~')}<s>${t}</s>${mk('~~')}`)
+    .replace(/(^|[^~])~([^\s~](?:[^~]*?[^\s~])?)~(?!~)/g, (_, p, t) => `${p}${mk('~')}<u>${t}</u>${mk('~')}`)
+    .replace(/==(\S(?:.*?\S)?)==/g, (_, t) => `${mk('==')}<mark>${t}</mark>${mk('==')}`)
+    .replace(/&#60;br\s*\/?&#62;/gi, b => mk(b) + '<br>')
+    .replace(/(^|\s)(#[\p{L}\p{N}_\-/]+)/gu, '$1<span class="tag">$2</span>')
+    .replace(/\u0000(\d+)\u0000/g, (_, i) => kept[i]);
+}
 
 export function renderLines(text) {
   if (!text) return ''; // empty editor shows the CSS placeholder
@@ -51,14 +66,18 @@ export function renderLines(text) {
     let cls = '', html, m;
     if (line.startsWith('```')) { fence = !fence; cls = 'fence'; html = mk(e); }
     else if (fence) { cls = 'codeblock'; html = e; }
-    else if ((m = line.match(/^#{1,6}(?=\s)/))) { cls = 'h' + m[0].length; html = mk(m[0]) + inline(e.slice(m[0].length)); }
-    else if ((m = line.match(/^\s*[-*+] \[([ xX])\]/))) {
-      cls = m[1] === ' ' ? 'task' : 'task done';
-      html = `<span class="box" data-line="${i}">${m[0]}</span>${inline(e.slice(m[0].length))}`;
+    else if (/^ {0,3}([-*_])( *\1){2,} *$/.test(line)) { cls = 'hr'; html = mk(e); }
+    else if ((m = line.match(/^#{1,6}\s/))) { cls = 'h' + (m[0].length - 1); html = mk(m[0]) + inline(e.slice(m[0].length)); }
+    else if ((m = line.match(/^(\s*)([-*+] \[([ xX])\])/))) {
+      cls = m[3] === ' ' ? 'task' : 'task done';
+      html = `${m[1]}<span class="box" data-line="${i}">${m[2]}</span>${inline(e.slice(m[0].length))}`;
     }
-    else if ((m = line.match(/^\s*(?:[-*+]|\d+\.)(?=\s)/))) { cls = 'li'; html = `<span class="bullet">${m[0]}</span>${inline(e.slice(m[0].length))}`; }
-    else if (line.startsWith('>')) { cls = 'quote'; html = mk('&#62;') + inline(e.slice(5)); } // esc('>') is 5 chars
-    else if (/^(-{3,}|\*{3,})$/.test(line)) { cls = 'hr'; html = mk(e); }
+    else if ((m = line.match(/^(\s*)([-*+]|\d+\.)(?=\s)/))) {
+      cls = 'li';
+      html = `${m[1]}<span class="bullet${/\d/.test(m[2]) ? '' : ' dot'}">${m[2]}</span>${inline(e.slice(m[0].length))}`;
+    }
+    else if ((m = line.match(/^\[\^[^\]\s]+\]:/))) { cls = 'fndef'; html = `<span class="fnlabel">${esc(m[0])}</span>${inline(e.slice(esc(m[0]).length))}`; }
+    else if ((m = line.match(/^>\s?/))) { cls = 'quote'; const q = esc(m[0]); html = mk(q) + inline(e.slice(q.length)); }
     else html = inline(e);
     return `<div${cls && ` class="${cls}"`}>${html || '<br>'}</div>`;
   }).join('');

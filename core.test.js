@@ -17,6 +17,38 @@ test('live markdown keeps the exact text', () => {
   assert.doesNotMatch(renderLines('<img src=x onerror=alert(1)>'), /<img/);
 });
 
+test('Bear-only syntax: underline, highlight, wiki links, footnotes', () => {
+  const s = '~밑줄~ ~~취소~~ ==형광펜== [[회의 메모]] 각주[^1]\n[^1]: 각주 내용 ~~a~~\n~ 혼자 ~ 물결';
+  const h = renderLines(s);
+  assert.equal(plain(h), s);
+  assert.match(h, /<u>밑줄<\/u>/);
+  assert.match(h, /<s>취소<\/s>/);
+  assert.doesNotMatch(h, /<u>~/);
+  assert.match(h, /<mark>형광펜<\/mark>/);
+  assert.match(h, /<a class="wiki" data-note="회의 메모">회의 메모<\/a>/);
+  assert.match(h, /<sup class="fn" data-fn="1">/);
+  assert.match(h, /class="fndef"/);
+  assert.equal(h.match(/<u>/g).length, 1); // "~ 혼자 ~" has spaces inside, so it is not underline
+});
+
+test('every syntax from the cheat sheet renders', () => {
+  const s = "###### 작은 제목\n*기울임* __굵게__ ~~취소~~\n* 별 목록\n+ 더하기 목록\n2. 둘\n>인용\n[네이버](https://naver.com) ![개구리](https://x.com/a_b_c.png)\n위<br>아래\n___\n* * *\n[나쁜](javascript:alert(1)) ![나쁜](javascript:x)\nhttps://a.com/x_y_z_ 끝";
+  const h = renderLines(s);
+  assert.equal(plain(h), s);
+  assert.match(h, /class="h6"/);
+  assert.match(h, /<i>기울임<\/i>/);
+  assert.match(h, /<b>굵게<\/b>/);
+  assert.match(h, /<s>취소<\/s>/);
+  assert.equal(h.match(/class="li"/g).length, 3);
+  assert.match(h, /class="quote"/);
+  assert.match(h, /<a class="url" href="https:\/\/naver.com">네이버<\/a>/);
+  assert.match(h, /<img src="https:\/\/x.com\/a_b_c.png" alt="개구리"/);
+  assert.match(h, /<\/span><br>아래/);
+  assert.equal(h.match(/class="hr"/g).length, 2);
+  assert.doesNotMatch(h, /href="javascript|src="javascript/);
+  assert.match(h, /href="https:\/\/a.com\/x_y_z_"/); // underscores in a URL are not italics
+});
+
 test('enter continues and ends lists', () => {
   assert.deepEqual(enter('- 사과', 4, 4), { text: '- 사과\n- ', at: 7 });
   assert.deepEqual(enter('- [x] 끝', 7, 7), { text: '- [x] 끝\n- [ ] ', at: 14 });
