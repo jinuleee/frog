@@ -1,7 +1,7 @@
 // Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo } from './core.js';
+import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix } from './core.js';
 
 // What the editor shows as plain text must equal the note, or the caret drifts.
 const plain = html => html.split('</div>').slice(0, -1)
@@ -112,4 +112,28 @@ test('[] renders as a checkbox, links do not', () => {
   assert.doesNotMatch(renderLines('[](https://a.com) [링크](https://a.com)'), /task/);
   assert.deepEqual(enter('[] 우유', 5, 5), { text: '[] 우유\n[] ', at: 9 });
   assert.deepEqual(enter('[] 우유\n[] ', 9, 9), { text: '[] 우유\n', at: 6 });
+});
+
+test('tables keep the text and become grid rows', () => {
+  const s = '| 항목 | 내용 |\n| --- | :-: |\n| 상태 | **좋음** |\n|a|';
+  const h = renderLines(s);
+  assert.equal(plain(h), s);
+  assert.match(h, /class="tr th" style="--cols:2"/);
+  assert.match(h, /class="tsep"/);
+  assert.match(h, /<span class="td"> <span class="mk">\*\*<\/span><b>좋음<\/b>/);
+  assert.match(h, /style="--cols:1"/);
+});
+
+test('toolbar: wrap selection and toggle line starters', () => {
+  assert.deepEqual(wrap('굵게 쓰기', 0, 2, '**'), { text: '**굵게** 쓰기', at: 6 });
+  assert.deepEqual(wrap('ab', 1, 1, '=='), { text: 'a====b', at: 3 });
+  assert.deepEqual(wrap('주소', 0, 2, '[', '](https://)'), { text: '[주소](https://)', at: 14 });
+  let r = linePrefix('a\n제목', 3, '#');
+  assert.deepEqual(r, { text: 'a\n# 제목', at: 5 });
+  r = linePrefix(r.text, r.at, '#'); assert.equal(r.text, 'a\n## 제목');
+  r = linePrefix('### 제목', 5, '#'); assert.deepEqual(r, { text: '제목', at: 1 });
+  assert.equal(linePrefix('- 사과', 3, '- ').text, '사과');
+  assert.equal(linePrefix('- 사과', 3, '1. ').text, '1. 사과');
+  assert.equal(linePrefix('3. 사과', 3, '1. ').text, '사과');
+  assert.equal(linePrefix('# 제목', 3, '> ').text, '> 제목');
 });

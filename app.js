@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo } from './core.js?v=9';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix } from './core.js?v=10';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -68,19 +68,33 @@ function renderSide() {
   $('#tags').innerHTML = html(tree, '');
 }
 
+// List dates like Bear: 방금 전, 5분 전, 3시간 전, 어제, 7월 10일, 2025년 7월 8일.
+function when(t) {
+  const min = (Date.now() - t) / 6e4, d = new Date(t), now = new Date();
+  if (min < 1) return '방금 전';
+  if (min < 60) return `${min | 0}분 전`;
+  if (d.toDateString() === now.toDateString()) return `${(min / 60) | 0}시간 전`;
+  if (d.toDateString() === new Date(now - 864e5).toDateString()) return '어제';
+  return d.toLocaleDateString('ko-KR', { year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric', month: 'long', day: 'numeric' });
+}
+setInterval(() => renderList(), 6e4); // keep "5분 전" honest
+
+const VIEWS = { all: 'Notes', todo: 'Todo', archived: 'Archive', trashed: 'Trash' };
 function renderList() {
+  $('#viewName').textContent = view.tag ? '#' + view.tag : view.cat || VIEWS[view.filter];
   $('#items').innerHTML = visible().map(n => {
-    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\{[^{}:]+:([^{}]*)\}/g, '$1').replace(/\[[ xX]?\]|[#*_>`~=^\[\]-]/g, '').trim().slice(0, 120);
+    const pic = n.text.match(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/);
+    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/!?\[([^\]]*)\]\([^)\s]*\)/g, '$1').replace(/\{[^{}:]+:([^{}]*)\}/g, '$1').replace(/\[[ xX]?\]|[#*_>`~=^\[\]|-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
     return `<li draggable="true"><button data-id="${esc(n.id)}" aria-current="${n.id === view.current}">
       <strong>${catColor(n.category) ? `<i class="swatch" style="background:${esc(catColor(n.category))}" title="${esc(n.category)}"></i>` : ''}${n.pinned ? '<span class="pin" title="고정">&#x1F4CC;</span>' : ''}${esc(title(n.text))}</strong>
-      <span>${esc(body)}</span>
-      <time>${new Date(n.updated).toLocaleDateString('ko-KR')}${openTodos(n.text) ? ` · <span class="todo-left">할 일 ${openTodos(n.text)}</span>` : ''}</time></button></li>`;
+      <span>${esc(body)}</span>${pic ? `<img class="pic" src="${esc(pic[1])}" alt="" loading="lazy">` : ''}
+      <time>${when(n.updated)}${openTodos(n.text) ? ` · <span class="todo-left">할 일 ${openTodos(n.text)}</span>` : ''}</time></button></li>`;
   }).join('') || '<li class="none">노트가 없습니다</li>';
 }
 
 function renderEditor() {
   const n = notes[view.current];
-  $('#editor header').hidden = $('.page').hidden = !n;
+  $('#editor header').hidden = $('.page').hidden = $('#tools').hidden = !n;
   $('#empty').hidden = !!n;
   if (!n) return;
   paint();
@@ -202,12 +216,36 @@ function rail() {
 ed.addEventListener('scroll', () => lastSel || rail());
 document.addEventListener('selectionchange', () => { if (document.activeElement === ed && (lastSel = selection())) rail(); });
 
-function todo() {
-  const n = notes[view.current], at = ((document.activeElement === ed && selection()) || lastSel || [n.text.length, n.text.length])[1], r = toggleTodo(n.text, at);
+
+// Formatting toolbar (Bear's bottom bar). Buttons never take focus, so the editor keeps its selection.
+const TABLE = '|  |  |\n| --- | --- |\n|  |  |';
+const ACTS = {
+  h: (t, a, b) => linePrefix(t, b, '#'), ul: (t, a, b) => linePrefix(t, b, '- '),
+  ol: (t, a, b) => linePrefix(t, b, '1. '), quote: (t, a, b) => linePrefix(t, b, '> '),
+  todo: (t, a, b) => toggleTodo(t, b),
+  b: (t, a, b) => wrap(t, a, b, '**'), i: (t, a, b) => wrap(t, a, b, '_'), u: (t, a, b) => wrap(t, a, b, '~'),
+  s: (t, a, b) => wrap(t, a, b, '~~'), mark: (t, a, b) => wrap(t, a, b, '=='), code: (t, a, b) => wrap(t, a, b, '`'),
+  link: (t, a, b) => { const r = wrap(t, a, b, '[', '](https://)'); return { text: r.text, at: a === b ? r.at : r.at - 1 }; },
+  img: (t, a, b) => { const r = wrap(t, a, b, '![', '](https://)'); return { text: r.text, at: r.at + (a === b ? 0 : -1) }; },
+  // Blocks go on their own lines after the caret's line.
+  table: (t, a, b) => block(t, b, TABLE, 2), hr: (t, a, b) => block(t, b, '---', 3),
+};
+function block(t, pos, s, caret) {
+  const le = (t.indexOf('\n', pos) + 1 || t.length + 1) - 1, lead = le ? '\n' : '';
+  return { text: t.slice(0, le) + lead + s + '\n' + t.slice(le), at: le + lead.length + caret };
+}
+function act(name) {
+  const n = notes[view.current];
+  if (!n) return;
+  if (name === 'more') return void ($('#tools .more').hidden = !$('#tools .more').hidden);
+  const [a, b] = (document.activeElement === ed && selection()) || lastSel || [n.text.length, n.text.length];
+  const r = ACTS[name](n.text, a, b);
   ed.focus();
   setText(r.text, r.at);
 }
-$('#todoBtn').onclick = todo;
+const todo = () => act('todo');
+$('#tools').addEventListener('mousedown', e => e.preventDefault());
+$('#tools').onclick = e => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act); };
 $('#colorSel').onchange = e => {
   const c = e.target.value, n = notes[view.current];
   e.target.value = '';
@@ -266,6 +304,8 @@ ed.addEventListener('keydown', e => {
     e.preventDefault();
     return e.shiftKey ? step(history.redo, history.undo) : step(history.undo, history.redo);
   }
+  const key = (e.metaKey || e.ctrlKey) && { b: 'b', i: 'i', u: 'u' }[e.key.toLowerCase()];
+  if (key) { e.preventDefault(); return act(key); }
   if (e.key !== 'Enter') return;
   e.preventDefault();
   if (e.metaKey || e.ctrlKey) return todo();
@@ -336,6 +376,11 @@ $('#newBtn').onclick = () => {
 };
 
 $('#search').oninput = e => { view.q = e.target.value; renderList(); };
+// Search hides behind its icon like Bear; it closes again when left empty.
+const showSearch = on => { $('#search').hidden = !on; $('#viewName').hidden = on; if (on) $('#search').focus(); };
+$('#searchBtn').onclick = () => showSearch($('#search').hidden);
+$('#search').onblur = e => e.target.value || showSearch(false);
+$('#search').onkeydown = e => { if (e.key === 'Escape') { e.target.value = view.q = ''; renderList(); showSearch(false); } };
 $('#pinBtn').onclick = () => { const n = notes[view.current]; n.pinned = !n.pinned; changed(n, false); };
 
 $('#archiveBtn').onclick = () => {

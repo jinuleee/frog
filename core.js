@@ -78,12 +78,22 @@ function inline(s) { // s is already escaped
 export function renderLines(text) {
   if (!text) return ''; // empty editor shows the CSS placeholder
   let fence = false;
-  return text.split('\n').map((line, i) => {
+  return text.split('\n').map((line, i, all) => {
     const e = esc(line);
     let cls = '', html, m;
     if (line.startsWith('```')) { fence = !fence; cls = 'fence'; html = mk(e); }
     else if (fence) { cls = 'codeblock'; html = e; }
     else if (/^ {0,3}([-*_])( *\1){2,} *$/.test(line)) { cls = 'hr'; html = mk(e); }
+    // Table: "| a | b |" rows; pipes are marks, cells are grid columns (CSS), "|---|" is hidden.
+    else if (/^\s*\|.*\|\s*$/.test(line)) {
+      if (isSep(line)) { cls = 'tsep'; html = mk(e); }
+      else {
+        const parts = e.split('|'), last = parts.length - 1;
+        cls = isSep(all[i + 1]) ? 'tr th' : 'tr';
+        html = parts.map((p, k) => (k === 0 || k === last ? mk(p) : `<span class="td">${inline(p)}</span>`)).join(mk('|'));
+        return `<div class="${cls}" style="--cols:${last - 1}">${html}</div>`;
+      }
+    }
     else if ((m = line.match(/^#{1,6}\s/))) { cls = 'h' + (m[0].length - 1); html = mk(m[0]) + inline(e.slice(m[0].length)); }
     // To-do: "[] 할 일" / "[x] 끝" (the older "- [ ]" form still works).
     else if ((m = line.match(/^(\s*)((?:[-*+] )?\[([ xX]?)\])(?=\s|$)/))) {
@@ -99,6 +109,21 @@ export function renderLines(text) {
     else html = inline(e);
     return `<div${cls && ` class="${cls}"`}>${html || '<br>'}</div>`;
   }).join('');
+}
+
+const isSep = l => /^\s*\|[\s|:-]*-[\s|:-]*$/.test(l || '');
+
+// Toolbar: wrap the selection in marks (or drop empty marks at the caret, ready to type into).
+export const wrap = (text, a, b, open, close = open) =>
+  ({ text: text.slice(0, a) + open + text.slice(a, b) + close + text.slice(b), at: a === b ? a + open.length : b + open.length + close.length });
+
+// Toolbar: line starters. '#' cycles # → ## → ### → none; '- ', '1. ', '> ' switch on/off (replacing another starter).
+export function linePrefix(text, pos, kind) {
+  const ls = text.lastIndexOf('\n', pos - 1) + 1;
+  const cur = text.slice(ls).match(/^(#{1,6} |[-*+] (?!\[)|\d+\. |> )?/)[0];
+  const next = kind === '#' ? (cur[0] === '#' ? (cur.length < 4 ? '#' + cur : '') : '# ')
+    : (kind === '1. ' ? /^\d/.test(cur) : cur === kind) ? '' : kind;
+  return { text: text.slice(0, ls) + next + text.slice(ls + cur.length), at: Math.max(ls, pos + next.length - cur.length) };
 }
 
 // Enter inside a list keeps the list going, like Bear; Enter on an empty item ends the list.
