@@ -1,7 +1,7 @@
 // Run: node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey } from './core.js';
+import { tags, title, toFile, fromFile, b64encode, b64decode, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey, editRange, tableArrow, inTable } from './core.js';
 
 // What the editor shows as plain text must equal the note, or the caret drifts.
 const plain = html => html.split('</div>').slice(0, -1)
@@ -171,4 +171,25 @@ test('table keys: tab between cells, enter adds a row, borders are kept', () => 
 test('pasted images point into the notes repo', () => {
   assert.match(renderLines('![](images/k3x.jpg)'), /<img data-img="images\/k3x.jpg"/);
   assert.doesNotMatch(renderLines('![](../secret.png)'), /<img/);
+});
+
+test('editing across table cells keeps the borders', () => {
+  const s = '앞\n| 가 | 나 | 다 |\n| --- | --- | --- |\n| 라 | 마 | 바 |\n뒤';
+  const a = s.indexOf('가'), b = s.indexOf('나') + 1;
+  assert.deepEqual(editRange(s, a, b, 'Z'), { text: s.replace('가 | 나', 'Z|'), at: a + 1 });
+  const r = editRange(s, s.indexOf('다'), s.indexOf('라') + 1, ''); // across rows: both rows and the --- line survive
+  assert.equal(r.text, '앞\n| 가 | 나 | |\n| --- | --- | --- |\n| | 마 | 바 |\n뒤');
+  assert.equal(editRange(s, s.indexOf('|'), s.indexOf('뒤'), '').text, '앞\n뒤'); // whole table selected: it goes
+  assert.equal(editRange('abc', 1, 2, 'X').text, 'aXc');
+  assert.equal(inTable(s, s.indexOf('마')), true);
+  assert.equal(inTable(s, 0), false);
+});
+
+test('arrow keys move through tables by cell', () => {
+  const s = '앞\n| 가 | 나 |\n| --- | --- |\n| 라 | 마 |';
+  assert.equal(tableArrow(s, s.indexOf('마'), 1).text, s + '\n'); // last row, nothing below: a new line
+  assert.equal(tableArrow(s, s.indexOf('마'), -1).at, s.indexOf('나')); // same column, skips ---
+  assert.equal(tableArrow(s, s.indexOf('가'), -1).at, 1); // up out of the table: end of the line above
+  assert.equal(tableArrow(s, 0, 1).at, s.indexOf('가')); // into the table from above
+  assert.equal(tableArrow('a\nb', 0, 1), null); // no table: the browser handles it
 });

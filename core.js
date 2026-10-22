@@ -12,7 +12,7 @@ export const removeTag = (text, tag) =>
   text.replace(new RegExp(`(^|[ \\t])#${reEsc(tag)}(?:/${TAG_CHARS}*)?(?=\\s|$)`, 'gmu'), '$1');
 
 // Text colors for {빨강:글자} or {red:글자}; values are CSS class suffixes.
-export const COLORS = { 빨강: 'red', 주황: 'orange', 노랑: 'yellow', 초록: 'green', 파랑: 'blue', 보라: 'purple', 분홍: 'pink', 회색: 'gray' };
+const COLORS = { 빨강: 'red', 주황: 'orange', 노랑: 'yellow', 초록: 'green', 파랑: 'blue', 보라: 'purple', 분홍: 'pink', 회색: 'gray' };
 const COLOR_RE = new RegExp(`\\{(${[...Object.keys(COLORS), ...Object.values(COLORS)].join('|')}):([^{}]+)\\}`, 'g');
 
 // A tag must follow whitespace or a line start, so "# Heading" and "a#b" are not tags.
@@ -138,6 +138,43 @@ function colWidths(lines) {
     for (const k of block) out[k] = tpl;
   }
   return out;
+}
+
+export const inTable = (text, pos) => { const l = lineAt(text, pos); return isRow(l) || isSep(l); };
+const lineAt = (text, pos) => text.slice(text.lastIndexOf('\n', pos - 1) + 1).split('\n')[0];
+
+// Replace text[a, b) with ins. A table line only partly inside the range keeps its "|" borders
+// (and its line break), so selecting across cells and typing never merges or breaks cells.
+export function editRange(text, a, b, ins) {
+  const ls = text.lastIndexOf('\n', a - 1) + 1, le = (text.indexOf('\n', b) + 1 || text.length + 1) - 1;
+  const lines = text.slice(ls, le).split('\n');
+  let off = ls, kept = '';
+  const part = lines.map(l => { const s = off; off += l.length + 1; return (isRow(l) || isSep(l)) && !(a <= s && b >= s + l.length); });
+  lines.forEach((l, j) => { if (isSep(l) && (part[j - 1] || part[j + 1])) part[j] = true; }); // a --- line stays while its table does
+  off = ls;
+  lines.forEach((l, j) => {
+    for (let k = Math.max(a, off); k < Math.min(b, off + l.length); k++) if (part[j] && (l[k - off] === '|' || isSep(l))) kept += l[k - off];
+    const nl = off + l.length; // this line's break
+    if (nl >= a && nl < b && (part[j] || part[j + 1])) kept += '\n';
+    off = nl + 1;
+  });
+  return { text: text.slice(0, a) + ins + kept + text.slice(b), at: a + ins.length };
+}
+
+// Up/Down arrows around tables: move cell to cell in the same column, skip the hidden "|---|" line,
+// step into a table from the line above/below it, and leave it (adding a line under a table at the very end).
+export function tableArrow(text, pos, dir) {
+  const lines = text.split('\n'), i = text.slice(0, pos).split('\n').length - 1;
+  const startOf = k => lines.slice(0, k).reduce((s, x) => s + x.length + 1, 0);
+  const cells = k => { const s = startOf(k), l = lines[k], out = []; for (let p = l.indexOf('|'); p >= 0 && p < l.lastIndexOf('|'); p = l.indexOf('|', p + 1)) out.push(s + p + 1 + (l[p + 1] === ' ')); return out; };
+  let k = i + dir;
+  while (isSep(lines[k])) k += dir;
+  if (!isRow(lines[i])) return isRow(lines[k]) ? { text, at: cells(k)[0] } : null;
+  const col = Math.max(cells(i).filter(c => c <= pos).length - 1, 0);
+  if (isRow(lines[k])) { const c = cells(k); return { text, at: c[Math.min(col, c.length - 1)] }; }
+  if (k < 0) return { text, at: pos };
+  if (k >= lines.length) return { text: text + '\n', at: text.length + 1 };
+  return { text, at: dir > 0 ? startOf(k) : startOf(k) + lines[k].length };
 }
 
 // Keys inside a table, like Bear: Tab/Shift+Tab move between cells, Enter adds a row

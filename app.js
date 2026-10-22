@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey, IMG } from './core.js?v=13';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey, tableArrow, editRange, inTable, IMG } from './core.js?v=14';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -211,19 +211,17 @@ function markActive() {
 }
 document.addEventListener('selectionchange', markActive);
 
-// Arrow keys can land the caret on a hidden table border or the hidden "|---|" line: hop to the next visible spot.
-let caretWas = 0;
+// A click can still land the caret on a hidden table border or the hidden "|---|" line: hop to a visible spot.
+// In an empty cell ("|  |") it goes between the two spaces, so typed text keeps the cell's padding.
 document.addEventListener('selectionchange', () => {
   const s = getSelection(), sel = s.isCollapsed && document.activeElement === ed && selection();
   if (!sel) return;
   const el = s.focusNode.nodeType === 3 ? s.focusNode : s.focusNode.childNodes[s.focusOffset] || s.focusNode;
-  const sep = el.parentElement?.closest('.tsep') || (el.classList?.contains('tsep') && el);
-  if (sep) {
-    const text = notes[view.current].text, ls = text.lastIndexOf('\n', sel[1] - 1);
-    return setCaret(sel[1] < caretWas ? Math.max(ls, 0) : text.indexOf('\n', sel[1]) + 1 || text.length); // moving up: end of row above
-  }
-  if (el.nodeType === 3 && hidden(el)) return setCaret(sel[1]);
-  caretWas = sel[1];
+  const to = el.parentElement?.closest('.tsep') || el.classList?.contains('tsep') ? notes[view.current].text.lastIndexOf('\n', sel[1] - 1) // end of the row above
+    : el.nodeType === 3 && hidden(el) ? sel[1]
+    : el.nodeType === 3 && el.parentElement.classList.contains('td') && el.data === '  ' && s.focusOffset !== 1 ? sel[1] - s.focusOffset + 1
+    : null;
+  if (to !== null && to >= 0 && (to !== sel[1] || hidden(el))) return setCaret(to); // never loops: setCaret lands on visible text
   $('#tools .tbl').hidden = !inTable(notes[view.current].text, sel[1]);
 });
 
@@ -324,8 +322,17 @@ ed.addEventListener('input', e => {
 });
 
 ed.addEventListener('beforeinput', e => {
-  if (e.inputType === 'historyUndo') { e.preventDefault(); step(history.undo, history.redo); }
-  if (e.inputType === 'historyRedo') { e.preventDefault(); step(history.redo, history.undo); }
+  if (e.inputType === 'historyUndo') { e.preventDefault(); return step(history.undo, history.redo); }
+  if (e.inputType === 'historyRedo') { e.preventDefault(); return step(history.redo, history.undo); }
+  // Typing over or deleting a selection that cuts through a table: do it ourselves so cell borders survive.
+  if (composing || e.isComposing || !/^(insertText|insertReplacementText|delete)/.test(e.inputType)) return;
+  const r = e.getTargetRanges()[0]; // Chrome leaves this empty for typing over a selection: use the selection then
+  const [a, b] = r ? [offsetOf(r.startContainer, r.startOffset), offsetOf(r.endContainer, r.endOffset)] : selection() || [0, 0];
+  if (a === b) return;
+  const t = notes[view.current].text, ins = e.data ?? '', out = editRange(t, a, b, ins);
+  if (out.text === t.slice(0, a) + ins + t.slice(b)) return; // no table in the way: the browser does it
+  e.preventDefault();
+  setText(out.text, out.at);
 });
 
 ed.addEventListener('keydown', e => {
@@ -338,6 +345,11 @@ ed.addEventListener('keydown', e => {
     const sel = selection();
     const r = sel && sel[0] === sel[1] && tableKey(notes[view.current].text, sel[1], e.shiftKey && e.key === 'Tab' ? 'ShiftTab' : e.key);
     if (r) { e.preventDefault(); return r.text === notes[view.current].text ? setCaret(r.at) : setText(r.text, r.at); }
+  }
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const sel = selection(), t = notes[view.current].text;
+    const r = sel && tableArrow(t, sel[1], e.key === 'ArrowUp' ? -1 : 1);
+    if (r) { e.preventDefault(); return r.text === t ? setCaret(r.at) : setText(r.text, r.at); }
   }
   const key = (e.metaKey || e.ctrlKey) && { b: 'b', i: 'i', u: 'u' }[e.key.toLowerCase()];
   if (key) { e.preventDefault(); return act(key); }
@@ -357,7 +369,8 @@ ed.addEventListener('paste', e => {
   const file = [...e.clipboardData.files].find(f => f.type.startsWith('image/'));
   if (file) return void pasteImage(file, sel);
   const t = notes[view.current].text, add = e.clipboardData.getData('text/plain').replace(/\r\n?|\n/g, inTable(t, sel[0]) ? ' ' : '\n');
-  setText(t.slice(0, sel[0]) + add + t.slice(sel[1]), sel[0] + add.length);
+  const r = editRange(t, sel[0], sel[1], add);
+  setText(r.text, r.at);
 });
 
 ed.addEventListener('click', e => {
@@ -575,8 +588,6 @@ $('#settings form').onsubmit = () => {
 const IMG_CACHE = 'frog-img', imgReq = p => new Request(new URL(`__img/${p}`, location.href)), imgs = {};
 const queue = { get: () => JSON.parse(localStorage['frog.imgQueue'] || '[]'), set: q => (localStorage['frog.imgQueue'] = JSON.stringify(q)) };
 
-const inTable = (t, pos) => /^\s*\|.*\|\s*$/.test(t.slice(t.lastIndexOf('\n', pos - 1) + 1).split('\n')[0]);
-
 async function pasteImage(file, [a, b]) {
   let blob = file, ext = 'gif';
   if (file.type !== 'image/gif') { // keep GIFs animated; everything else becomes a JPEG up to 1600px wide
@@ -599,17 +610,18 @@ async function pasteImage(file, [a, b]) {
 
 // Show images[data-img]: from the cache, or fetched once from the notes repo (private, so it needs the token).
 function loadImg(p) {
+  const retry = () => (setTimeout(() => delete imgs[p], 6e4), ''); // not there yet (other device hasn't synced): ask again in a minute, not on every keystroke
   return (imgs[p] ??= (async () => {
     const c = await caches.open(IMG_CACHE);
     let r = await c.match(imgReq(p));
     if (!r && cfg.token) {
       const res = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${p}`, { headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github.raw' } });
-      if (!res.ok) return delete imgs[p], ''; // not uploaded yet from the other device: try again later
+      if (!res.ok) return retry();
       await c.put(imgReq(p), res.clone());
       r = res;
     }
-    return r ? URL.createObjectURL(await r.blob()) : (delete imgs[p], '');
-  })().catch(() => (delete imgs[p], '')));
+    return r ? URL.createObjectURL(await r.blob()) : retry();
+  })().catch(retry));
 }
 const showImgs = root => root.querySelectorAll('img[data-img]').forEach(async img => { const u = await loadImg(img.dataset.img); if (u) img.src = u; });
 

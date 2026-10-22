@@ -37,6 +37,6 @@ npm test                      # 핵심 로직 테스트 (Node 18 이상)
 토큰은 그 기기 브라우저에만 저장된다. 기기를 잃어버리면 GitHub에서 토큰을 삭제하면 된다.
 
 ## 배포
-빌드 없이 폴더 그대로 올리는 정적 사이트. 저장소가 공개면 GitHub Pages(Settings → Pages → main / root), 비공개면 Cloudflare Pages(빌드 명령 없음, 출력 폴더 `/`).
+빌드 없이 폴더 그대로 올리는 정적 사이트. GitHub Pages(Settings → Pages → main / root)로 https://jinuleee.github.io/frog/ 에 배포된다.
 
 외부 라이브러리 없음.
