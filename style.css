@@ -70,22 +70,28 @@ ul { list-style: none; margin: 0; padding: 0; }
 #editor header { justify-content: flex-end; flex-wrap: wrap; }
 #editor header button { color: var(--muted); font-size: 14px; }
 .spacer { flex: 1; }
-#text, #preview {
-  flex: 1; width: 100%; max-width: 760px; margin: 0 auto; padding: 28px 32px 80px;
-  overflow: auto; font-size: 17px; line-height: 1.75;
+#text {
+  flex: 1; width: 100%; max-width: 760px; margin: 0 auto; padding: 28px 32px 80px; overflow: auto;
+  font-size: 17px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; caret-color: var(--accent);
 }
-#text { border: 0; resize: none; background: none; color: inherit; font: inherit; font-size: 17px; outline: none; }
-#preview h1, #preview h2, #preview h3 { line-height: 1.3; }
-#preview a { color: var(--accent); }
-#preview code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
-#preview pre { background: var(--code); padding: 12px 14px; border-radius: 8px; overflow: auto; }
-#preview pre code { padding: 0; background: none; }
-#preview blockquote { margin-left: 0; padding-left: 14px; border-left: 3px solid var(--accent); color: var(--muted); }
-#preview li:has(> input[type="checkbox"]) { list-style: none; }
-#preview input[type="checkbox"] { accent-color: var(--accent); margin: 0 .5em 0 0 !important; } /* overrides showdown's inline margin */
-#preview img { max-width: 100%; }
-#preview table { border-collapse: collapse; }
-#preview th, #preview td { border: 1px solid var(--line); padding: 4px 10px; }
+#text:empty::before { content: attr(data-placeholder); color: var(--muted); white-space: pre-line; pointer-events: none; }
+/* Live markdown: marks stay visible but faint, the text around them takes the style. */
+#text .mk { color: var(--muted); opacity: .5; font-weight: 400; }
+#text .h1 { font-size: 1.75em; font-weight: 700; line-height: 1.35; padding-top: .3em; }
+#text .h2 { font-size: 1.4em; font-weight: 700; line-height: 1.4; padding-top: .25em; }
+#text .h3 { font-size: 1.18em; font-weight: 700; }
+#text .h4, #text .h5, #text .h6 { font-weight: 700; }
+#text .bullet, #text .box { color: var(--accent); font-weight: 700; }
+#text .box { cursor: pointer; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .9em; }
+#text .task.done { color: var(--muted); text-decoration: line-through; }
+#text .quote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--muted); }
+#text code, #text .codeblock, #text .fence { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .9em; background: var(--code); }
+#text code { border-radius: 4px; padding: 1px 3px; }
+#text .codeblock, #text .fence { padding: 0 12px; }
+#text .tag { color: var(--accent); background: var(--sel); border-radius: 4px; }
+#text .url { color: var(--accent); }
+#text .hr { color: var(--muted); letter-spacing: .3em; }
+.danger { color: #c0392b !important; font-weight: 600; }
 #empty { margin: auto; color: var(--muted); }
 
 dialog { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 12px; width: min(420px, 92vw); }
@@ -101,5 +107,5 @@ dialog button[value="ok"] { background: var(--accent); color: #fff; }
   #side, #list, #editor { display: none; padding-top: env(safe-area-inset-top); }
   body[data-pane="side"] #side, body[data-pane="list"] #list, body[data-pane="editor"] #editor { display: flex; }
   .mobile { display: inline-block; color: var(--accent); }
-  #text, #preview { padding: 18px 18px 80px; }
+  #text { padding: 18px 18px 80px; }
 }

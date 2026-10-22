@@ -5,7 +5,7 @@
 ## 기능
 - 노트 / 보관함 / 휴지통, 고정, 검색
 - `#태그`, `#업무/홈쇼핑` 같은 중첩 태그 자동 트리
-- 마크다운 미리보기, 체크리스트 클릭으로 체크
+- 쓰는 즉시 마크다운 서식 표시(제목·굵게·목록·인용·코드), 체크박스 클릭, 목록 자동 이어쓰기, 되돌리기
 - GitHub 동기화 (오프라인에서 작성 → 연결되면 자동 업로드, 같은 노트를 두 기기에서 고치면 나중 저장이 이김, 이전 버전은 frog-notes 커밋 기록에 남음)
 - 테마 4종(Lily, Paper, Pond, Night) + 시스템 따라가기
 - 폰 홈 화면에 앱으로 추가 가능, 노트 1개 `.md` 내보내기
@@ -26,8 +26,6 @@ npm test                      # 핵심 로직 테스트 (Node 18 이상)
 토큰은 그 기기 브라우저에만 저장된다. 기기를 잃어버리면 GitHub에서 토큰을 삭제하면 된다.
 
 ## 배포
-Cloudflare Pages에 이 저장소를 연결 (빌드 명령 없음, 출력 폴더 `/`), 앞단에 Cloudflare Access로 본인 이메일만 허용.
+빌드 없이 폴더 그대로 올리는 정적 사이트. 저장소가 공개면 GitHub Pages(Settings → Pages → main / root), 비공개면 Cloudflare Pages(빌드 명령 없음, 출력 폴더 `/`).
 
-## 포함된 라이브러리
-- `vendor/showdown.min.js` — showdown v2.1.0 (MIT)
-- `vendor/purify.es.mjs` — DOMPurify v3.4.17 (Apache-2.0 / MPL-2.0)
+외부 라이브러리 없음.

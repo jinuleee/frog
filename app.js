@@ -1,24 +1,20 @@
-import DOMPurify from './vendor/purify.es.mjs';
-import { tags, title, toFile, fromFile, b64encode, b64decode } from './core.js';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter } from './core.js';
 
 const $ = s => document.querySelector(s);
-const esc = s => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 
 // Note: { id, text, created, updated, pinned, archived, trashed, sha?, dirty?, gone? }
 // sha = last synced GitHub blob, dirty = local change not pushed yet, gone = deleted, waiting to delete on GitHub.
 const notes = load('frog.notes', {});
 const cfg = load('frog.cfg', { repo: 'jinuleee/frog-notes', token: '', theme: 'auto' });
-const view = { filter: 'all', tag: null, q: '', current: null, preview: false };
-// showdown is loaded as a classic script in index.html (window.showdown).
-const md = new showdown.Converter({ tasklists: true, tables: true, strikethrough: true, simplifiedAutoLink: true, simpleLineBreaks: true });
+const view = { filter: 'all', tag: null, q: '', current: null };
 
 let warned = false;
 function save() {
   // shortcut: localStorage holds ~5MB of text (thousands of notes); move to IndexedDB if that fills up.
   try { localStorage.setItem('frog.notes', JSON.stringify(notes)); }
   catch (e) {
-    if (!warned) alert('이 기기의 저장 공간이 가득 찼습니다. 휴지통을 비우거나 동기화를 확인하세요.\n' + e.message);
+    if (!warned) status('이 기기의 저장 공간이 가득 찼습니다 · 휴지통을 비우세요');
     warned = true;
   }
 }
@@ -51,7 +47,7 @@ function renderSide() {
 
 function renderList() {
   $('#items').innerHTML = visible().map(n => {
-    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\[[ xX]\]|[#*_>`\[\]-]/g, '').trim().slice(0, 120);
+    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\[[ xX]\]|[#*_>`~\[\]-]/g, '').trim().slice(0, 120);
     return `<li><button data-id="${esc(n.id)}" aria-current="${n.id === view.current}">
       <strong>${n.pinned ? '<span class="pin">고정</span>' : ''}${esc(title(n.text))}</strong>
       <span>${esc(body)}</span>
@@ -61,27 +57,153 @@ function renderList() {
 
 function renderEditor() {
   const n = notes[view.current];
-  for (const el of ['#editor header', '#text']) $(el).hidden = !n;
+  $('#editor header').hidden = ed.hidden = !n;
   $('#empty').hidden = !!n;
-  if (!n) return void ($('#preview').hidden = true);
-  if ($('#text').value !== n.text) $('#text').value = n.text; // keeps the cursor while typing
-  $('#text').hidden = view.preview;
-  $('#preview').hidden = !view.preview;
-  if (view.preview) {
-    $('#preview').innerHTML = DOMPurify.sanitize(md.makeHtml(n.text));
-    for (const box of $('#preview').querySelectorAll('input[type="checkbox"]')) box.disabled = false;
-  }
+  if (!n) return;
+  paint();
   const trash = view.filter === 'trashed';
-  $('#modeBtn').textContent = view.preview ? '편집' : '미리보기';
   $('#pinBtn').textContent = n.pinned ? '고정 해제' : '고정';
   $('#archiveBtn').textContent = trash ? '복원' : n.archived ? '보관 해제' : '보관';
   $('#trashBtn').textContent = trash ? '영구 삭제' : '삭제';
+  $('#trashBtn').classList.toggle('danger', trash);
 }
 
 function render() { renderSide(); renderList(); renderEditor(); }
 
 const setPane = p => (document.body.dataset.pane = p);
 const status = s => ($('#status').textContent = s);
+
+/* ---------- live markdown editor ---------- */
+
+const ed = $('#text');
+try { ed.contentEditable = 'plaintext-only'; } catch { ed.contentEditable = 'true'; } // older Firefox
+let painted = '', composing = false;
+const history = { id: null, undo: [], redo: [], at: 0 };
+
+const lineText = node => node.nodeType === 3 ? node.data : node.nodeName === 'BR' ? '' : node.textContent;
+const readText = () => [...ed.childNodes].map(lineText).join('\n');
+
+// Offset in the note text of a DOM point inside the editor (each line div adds one "\n").
+function offsetOf(node, off) {
+  if (node === ed) return [...ed.childNodes].slice(0, off).reduce((s, n) => s + lineText(n).length + 1, 0);
+  let line = node;
+  while (line.parentNode !== ed) line = line.parentNode;
+  const r = document.createRange();
+  r.selectNodeContents(line);
+  r.setEnd(node, off);
+  return offsetOf(ed, [...ed.childNodes].indexOf(line)) + r.toString().length;
+}
+
+function selection() {
+  const s = getSelection();
+  if (!s.rangeCount || !ed.contains(s.anchorNode)) return null;
+  const a = offsetOf(s.anchorNode, s.anchorOffset), b = offsetOf(s.focusNode, s.focusOffset);
+  return [Math.min(a, b), Math.max(a, b)];
+}
+
+function setCaret(pos) {
+  const place = (node, off) => {
+    const r = document.createRange();
+    r.setStart(node, off);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+  };
+  for (const line of ed.childNodes) {
+    const len = lineText(line).length;
+    if (pos <= len) {
+      const w = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      for (let t; (t = w.nextNode()); pos -= t.length) if (pos <= t.length) return place(t, pos);
+      return place(line, 0);
+    }
+    pos -= len + 1;
+  }
+  place(ed, ed.childNodes.length);
+}
+
+function paint() {
+  const n = notes[view.current];
+  const html = renderLines(n.text);
+  if (composing || (html === painted && ed.dataset.id === n.id)) return; // never repaint under the Korean IME
+  const sel = document.activeElement === ed ? selection() : null;
+  ed.innerHTML = painted = html;
+  ed.dataset.id = n.id;
+  if (sel) setCaret(sel[1]);
+}
+
+function remember(n, force) {
+  if (history.id !== n.id) Object.assign(history, { id: n.id, undo: [], redo: [] });
+  if (force || Date.now() - history.at > 800) history.undo.push(n.text); // one undo step per typing burst
+  history.at = Date.now();
+  history.redo = [];
+}
+
+function setText(text, caret) {
+  const n = notes[view.current];
+  remember(n, true);
+  n.text = text;
+  changed(n);
+  setCaret(caret);
+}
+
+function step(from, to) {
+  const n = notes[view.current];
+  if (history.id !== n.id || !from.length) return;
+  to.push(n.text);
+  n.text = from.pop();
+  history.at = 0;
+  changed(n);
+  setCaret(n.text.length);
+}
+
+ed.addEventListener('compositionstart', () => (composing = true));
+ed.addEventListener('compositionend', () => { composing = false; ed.dispatchEvent(new Event('input')); });
+ed.addEventListener('input', e => {
+  const n = notes[view.current];
+  const text = readText();
+  if (text === n.text) return;
+  remember(n);
+  n.text = text;
+  if (composing || e.isComposing) return save(); // keep the text, repaint after the IME finishes
+  changed(n);
+});
+
+ed.addEventListener('beforeinput', e => {
+  if (e.inputType === 'historyUndo') { e.preventDefault(); step(history.undo, history.redo); }
+  if (e.inputType === 'historyRedo') { e.preventDefault(); step(history.redo, history.undo); }
+});
+
+ed.addEventListener('keydown', e => {
+  if (composing || e.isComposing) return;
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    return e.shiftKey ? step(history.redo, history.undo) : step(history.undo, history.redo);
+  }
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const sel = selection();
+  if (!sel) return;
+  const r = enter(notes[view.current].text, ...sel);
+  setText(r.text, r.at);
+});
+
+ed.addEventListener('paste', e => {
+  e.preventDefault();
+  const sel = selection();
+  if (!sel) return;
+  const t = notes[view.current].text, add = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+  setText(t.slice(0, sel[0]) + add + t.slice(sel[1]), sel[0] + add.length);
+});
+
+ed.addEventListener('click', e => {
+  const box = e.target.closest('.box');
+  if (box) {
+    const n = notes[view.current], lines = n.text.split('\n'), i = +box.dataset.line;
+    lines[i] = lines[i].replace(/\[([ xX])\]/, (_, c) => (c === ' ' ? '[x]' : '[ ]'));
+    return setText(lines.join('\n'), offsetOf(ed, i + 1) - 1);
+  }
+  const link = e.target.closest('a.url');
+  if (link && (e.metaKey || e.ctrlKey)) window.open(link.href, '_blank', 'noopener');
+});
 
 /* ---------- actions ---------- */
 
@@ -103,14 +225,11 @@ $('#newBtn').onclick = () => {
   const now = Date.now(), id = crypto.randomUUID();
   notes[id] = { id, text: '', created: now, updated: now, pinned: false, archived: false, trashed: false };
   if (view.filter !== 'all') view.filter = 'all';
-  view.preview = false;
   open(id);
-  $('#text').focus();
+  ed.focus();
 };
 
-$('#text').oninput = e => { const n = notes[view.current]; n.text = e.target.value; changed(n); };
 $('#search').oninput = e => { view.q = e.target.value; renderList(); };
-$('#modeBtn').onclick = () => { view.preview = !view.preview; renderEditor(); };
 $('#pinBtn').onclick = () => { const n = notes[view.current]; n.pinned = !n.pinned; changed(n, false); };
 
 $('#archiveBtn').onclick = () => {
@@ -120,10 +239,11 @@ $('#archiveBtn').onclick = () => {
   open(null);
 };
 
-$('#trashBtn').onclick = () => {
-  const n = notes[view.current];
+// Permanent delete asks twice in the button itself (confirm() is blocked in some embedded views).
+$('#trashBtn').onclick = e => {
+  const n = notes[view.current], b = e.currentTarget;
   if (!n.trashed) { n.trashed = true; changed(n, false); return open(null); }
-  if (!confirm(`"${title(n.text)}" 노트를 영구 삭제할까요? 되돌릴 수 없습니다.`)) return;
+  if (b.textContent !== '정말 삭제?') { b.textContent = '정말 삭제?'; return setTimeout(() => renderEditor(), 3000); }
   if (n.sha) { n.gone = true; changed(n, false); } else delete notes[n.id];
   open(null);
 };
@@ -135,17 +255,6 @@ $('#exportBtn').onclick = () => {
   a.download = title(n.text).replace(/[\\/:*?"<>|]/g, '_') + '.md';
   a.click();
   URL.revokeObjectURL(a.href);
-};
-
-// Ticking a checkbox in preview flips the matching "- [ ]" in the text.
-// shortcut: "- [ ]" lines inside code blocks are counted too; fine unless notes keep task lists in code.
-$('#preview').onchange = e => {
-  if (e.target.type !== 'checkbox') return;
-  const i = [...$('#preview').querySelectorAll('input[type="checkbox"]')].indexOf(e.target);
-  const n = notes[view.current];
-  let k = 0;
-  n.text = n.text.replace(/^(\s*(?:[-*+]|\d+\.)\s+\[)([ xX])\]/gm, (m, a, c) => k++ === i ? `${a}${c === ' ' ? 'x' : ' '}]` : m);
-  changed(n);
 };
 
 $('#side').onclick = e => {
@@ -172,7 +281,7 @@ $('#settings').onclose = () => {
   if ($('#settings').returnValue !== 'ok') return;
   const f = $('#settings form');
   for (const k of ['repo', 'token', 'theme']) cfg[k] = f[k].value.trim();
-  localStorage.setItem('frog.cfg', JSON.stringify(cfg));
+  try { localStorage.setItem('frog.cfg', JSON.stringify(cfg)); } catch {}
   applyTheme();
   sync();
 };
@@ -262,4 +371,4 @@ document.addEventListener('visibilitychange', () => document.visibilityState ===
 applyTheme();
 render();
 sync();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+navigator.serviceWorker?.register('sw.js').catch(() => {}); // unavailable in some embedded previews

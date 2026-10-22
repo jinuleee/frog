@@ -6,15 +6,14 @@
 <title>frog</title>
 <meta name="theme-color" content="#3f8f4f">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-512.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="style.css">
-<script src="vendor/showdown.min.js"></script>
 <script type="module" src="app.js"></script>
 </head>
 <body data-pane="list">
 <aside id="side">
-  <header class="brand"><img src="icon.svg" alt=""> frog</header>
+  <header class="brand"><img src="icon-512.png" alt=""> frog</header>
   <nav aria-label="보기">
     <button data-filter="all">노트</button>
     <button data-filter="archived">보관함</button>
@@ -41,14 +40,13 @@
   <header>
     <button id="backBtn" class="mobile">목록</button>
     <span class="spacer"></span>
-    <button id="modeBtn">미리보기</button>
     <button id="pinBtn">고정</button>
     <button id="archiveBtn">보관</button>
     <button id="trashBtn">삭제</button>
     <button id="exportBtn">내보내기</button>
   </header>
-  <textarea id="text" aria-label="노트 내용" placeholder="# 제목&#10;&#10;내용을 쓰고 #태그 또는 #업무/회의 처럼 정리하세요."></textarea>
-  <article id="preview" hidden></article>
+  <div id="text" role="textbox" aria-multiline="true" aria-label="노트 내용" spellcheck="false"
+       data-placeholder="# 제목&#10;&#10;내용을 쓰고 #태그 또는 #업무/회의 처럼 정리하세요."></div>
   <p id="empty">노트를 고르거나 + 로 새로 만드세요.</p>
 </main>
 
