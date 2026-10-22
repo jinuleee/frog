@@ -8,8 +8,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-512.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=7">
-<script type="module" src="app.js?v=7"></script>
+<link rel="stylesheet" href="style.css?v=8">
+<script type="module" src="app.js?v=8"></script>
 </head>
 <body data-pane="list">
 <aside id="side">
@@ -63,10 +63,10 @@
     </select>
     <button id="todoBtn" title="할 일로 만들기 · 체크 (Ctrl/⌘ + Enter)">할 일</button>
     <span class="spacer"></span>
-    <button id="pinBtn">고정</button>
-    <button id="archiveBtn">보관</button>
-    <button id="trashBtn">삭제</button>
-    <button id="exportBtn">내보내기</button>
+    <button id="pinBtn" class="ib"></button>
+    <button id="archiveBtn" class="ib"></button>
+    <button id="trashBtn" class="ib"></button>
+    <button id="exportBtn" class="ib" title="내보내기 (.md)" aria-label="내보내기"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>
   </header>
   <div class="page">
     <div id="text" role="textbox" aria-multiline="true" aria-label="노트 내용" spellcheck="false"

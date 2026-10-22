@@ -51,7 +51,7 @@ test('every syntax from the cheat sheet renders', () => {
 
 test('enter continues and ends lists', () => {
   assert.deepEqual(enter('- 사과', 4, 4), { text: '- 사과\n- ', at: 7 });
-  assert.deepEqual(enter('- [x] 끝', 7, 7), { text: '- [x] 끝\n- [ ] ', at: 14 });
+  assert.deepEqual(enter('- [x] 끝', 7, 7), { text: '- [x] 끝\n[] ', at: 11 });
   assert.deepEqual(enter('9. 아홉', 5, 5), { text: '9. 아홉\n10. ', at: 10 });
   assert.deepEqual(enter('- 사과\n- ', 7, 7), { text: '- 사과\n', at: 5 });
   assert.deepEqual(enter('보통 글', 2, 4), { text: '보통\n', at: 3 });
@@ -95,11 +95,20 @@ test('color text keeps the exact text', () => {
   assert.doesNotMatch(h, /c-없는색/);
 });
 
-test('todo toggle: make, check, uncheck; count open ones', () => {
-  assert.deepEqual(toggleTodo('장보기\n우유', 5), { text: '장보기\n- [ ] 우유', at: 11 });
-  assert.deepEqual(toggleTodo('- 우유', 3), { text: '- [ ] 우유', at: 7 });
-  assert.deepEqual(toggleTodo('  - [ ] 우유', 9), { text: '  - [x] 우유', at: 9 });
-  assert.equal(toggleTodo('- [x] 우유', 7).text, '- [ ] 우유');
-  assert.equal(openTodos('- [ ] a\n- [x] b\n  * [ ] c'), 2);
-  assert.equal(hasOpenTodo('- [x] done'), false);
+test('todo toggle: [] style, make, check, uncheck; count open ones', () => {
+  assert.deepEqual(toggleTodo('장보기\n우유', 5), { text: '장보기\n[] 우유', at: 8 });
+  assert.deepEqual(toggleTodo('- 우유', 3), { text: '[] 우유', at: 4 });
+  assert.deepEqual(toggleTodo('  [] 우유', 6), { text: '  [x] 우유', at: 7 });
+  assert.equal(toggleTodo('[x] 우유', 5).text, '[] 우유');
+  assert.equal(toggleTodo('- [ ] 옛 형식', 7).text, '- [x] 옛 형식');
+  assert.equal(openTodos('[] a\n[x] b\n  [ ] c\n- [ ] d\n[링크](https://a.com)'), 3);
+  assert.equal(hasOpenTodo('[x] done'), false);
+});
+
+test('[] renders as a checkbox, links do not', () => {
+  assert.match(renderLines('[] 할 일'), /class="task"><span class="box" data-line="0">\[\]<\/span>/);
+  assert.match(renderLines('[x] 끝'), /class="task done"/);
+  assert.doesNotMatch(renderLines('[](https://a.com) [링크](https://a.com)'), /task/);
+  assert.deepEqual(enter('[] 우유', 5, 5), { text: '[] 우유\n[] ', at: 9 });
+  assert.deepEqual(enter('[] 우유\n[] ', 9, 9), { text: '[] 우유\n', at: 6 });
 });

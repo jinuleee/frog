@@ -154,6 +154,10 @@ body:not(.side-closed) .showside { display: none; } /* the list's menu button on
 #text .c-green { color: #2f9e44; } #text .c-blue { color: #3b82f6; } #text .c-purple { color: #a855f7; }
 #text .c-pink { color: #e64980; } #text .c-gray { color: var(--muted); }
 .danger { color: #c0392b !important; font-weight: 600; }
+.ib { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.ib:hover { color: var(--text); }
+.ib.on { color: var(--accent); }
+.ib.on .i { fill: currentColor; fill-opacity: .25; }
 #empty { margin: auto; color: var(--muted); }
 
 dialog { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 12px; width: min(420px, 92vw); }

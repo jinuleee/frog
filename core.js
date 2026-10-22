@@ -85,8 +85,9 @@ export function renderLines(text) {
     else if (fence) { cls = 'codeblock'; html = e; }
     else if (/^ {0,3}([-*_])( *\1){2,} *$/.test(line)) { cls = 'hr'; html = mk(e); }
     else if ((m = line.match(/^#{1,6}\s/))) { cls = 'h' + (m[0].length - 1); html = mk(m[0]) + inline(e.slice(m[0].length)); }
-    else if ((m = line.match(/^(\s*)([-*+] \[([ xX])\])/))) {
-      cls = m[3] === ' ' ? 'task' : 'task done';
+    // To-do: "[] 할 일" / "[x] 끝" (the older "- [ ]" form still works).
+    else if ((m = line.match(/^(\s*)((?:[-*+] )?\[([ xX]?)\])(?=\s|$)/))) {
+      cls = m[3].trim() ? 'task done' : 'task';
       html = `${m[1]}<span class="box" data-line="${i}">${m[2]}</span>${inline(e.slice(m[0].length))}`;
     }
     else if ((m = line.match(/^(\s*)([-*+]|\d+\.)(?=\s)/))) {
@@ -104,23 +105,24 @@ export function renderLines(text) {
 export function enter(text, start, end) {
   const ls = text.lastIndexOf('\n', start - 1) + 1;
   const line = text.slice(ls, start);
-  const m = line.match(/^(\s*)(?:([-*+]) \[[ xX]\] |([-*+]) |(\d+)\. |> )/);
+  const m = line.match(/^(\s*)(?:(?:[-*+] )?\[[ xX]?\] |([-*+]) |(\d+)\. |> )/);
   if (m && line === m[0] && end === start) return { text: text.slice(0, ls) + text.slice(start), at: ls };
-  const next = !m ? '' : m[1] + (m[2] ? `${m[2]} [ ] ` : m[3] ? `${m[3]} ` : m[4] ? `${+m[4] + 1}. ` : '> ');
+  const next = !m ? '' : m[1] + (m[0].includes('[') ? '[] ' : m[2] ? `${m[2]} ` : m[3] ? `${+m[3] + 1}. ` : '> ');
   return { text: text.slice(0, start) + '\n' + next + text.slice(end), at: start + 1 + next.length };
 }
 
-export const hasOpenTodo = text => /^\s*[-*+] \[ \]/m.test(text);
-export const openTodos = text => (text.match(/^\s*[-*+] \[ \]/gm) || []).length;
+const OPEN = /^\s*(?:[-*+] )?\[ ?\](?=\s|$)/gm;
+export const hasOpenTodo = text => text.search(OPEN) >= 0;
+export const openTodos = text => (text.match(OPEN) || []).length;
 
-// One key for to-dos, like Bear: a plain line becomes "- [ ] ", a list item gains a box, a box gets checked/unchecked.
+// One key for to-dos: a plain line or list item becomes "[] ", "[]" becomes "[x]" and back.
 export function toggleTodo(text, pos) {
   const ls = text.lastIndexOf('\n', pos - 1) + 1, le = (text.indexOf('\n', pos) + 1 || text.length + 1) - 1;
   const line = text.slice(ls, le);
   let next, m;
-  if ((m = line.match(/^(\s*[-*+] \[)([ xX])\]/))) next = m[1] + (m[2] === ' ' ? 'x' : ' ') + ']' + line.slice(m[0].length);
-  else if ((m = line.match(/^(\s*)[-*+] /))) next = `${m[1]}- [ ] ` + line.slice(m[0].length);
-  else next = line.replace(/^(\s*)/, '$1- [ ] ');
+  if ((m = line.match(/^(\s*(?:[-*+] )?)\[([ xX]?)\]/))) next = m[1] + (m[2].trim() ? '[]' : '[x]') + line.slice(m[0].length);
+  else if ((m = line.match(/^(\s*)[-*+] /))) next = `${m[1]}[] ` + line.slice(m[0].length);
+  else next = line.replace(/^(\s*)/, '$1[] ');
   return { text: text.slice(0, ls) + next + text.slice(le), at: Math.max(ls, pos + next.length - line.length) };
 }
 

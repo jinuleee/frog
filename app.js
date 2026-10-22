@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo } from './core.js?v=7';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo } from './core.js?v=8';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -68,7 +68,7 @@ function renderSide() {
 
 function renderList() {
   $('#items').innerHTML = visible().map(n => {
-    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\{[^{}:]+:([^{}]*)\}/g, '$1').replace(/\[[ xX]\]|[#*_>`~=^\[\]-]/g, '').trim().slice(0, 120);
+    const body = n.text.trimStart().split('\n').slice(1).join(' ').replace(/\{[^{}:]+:([^{}]*)\}/g, '$1').replace(/\[[ xX]?\]|[#*_>`~=^\[\]-]/g, '').trim().slice(0, 120);
     return `<li><button data-id="${esc(n.id)}" aria-current="${n.id === view.current}">
       <strong>${catColor(n.category) ? `<i class="swatch" style="background:${esc(catColor(n.category))}" title="${esc(n.category)}"></i>` : ''}${n.pinned ? '<span class="pin">고정</span>' : ''}${esc(title(n.text))}</strong>
       <span>${esc(body)}</span>
@@ -90,10 +90,26 @@ function renderEditor() {
   $('#railBottom').textContent = day(n.updated);
   rail();
   const trash = view.filter === 'trashed';
-  $('#pinBtn').textContent = n.pinned ? '고정 해제' : '고정';
-  $('#archiveBtn').textContent = trash ? '복원' : n.archived ? '보관 해제' : '보관';
-  $('#trashBtn').textContent = trash ? '영구 삭제' : '삭제';
+  icon('#pinBtn', 'pin', n.pinned ? '고정 해제' : '고정');
+  $('#pinBtn').classList.toggle('on', !!n.pinned);
+  icon('#archiveBtn', trash ? 'restore' : 'archive', trash ? '복원' : n.archived ? '보관 해제' : '보관');
+  $('#archiveBtn').classList.toggle('on', !trash && !!n.archived);
+  icon('#trashBtn', 'trash', trash ? '영구 삭제' : '삭제');
   $('#trashBtn').classList.toggle('danger', trash);
+}
+
+// Header buttons are icons; the label lives in the tooltip and for screen readers.
+const ICONS = {
+  pin: 'M9 3h6l-1 6 4 4H6l4-4zM12 17v4',
+  archive: 'M2 3h20v4H2zM4 7v13h16V7M9 12h6',
+  restore: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',
+  trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+};
+function icon(sel, name, label, text = '') {
+  const b = $(sel);
+  b.innerHTML = `<svg class="i" viewBox="0 0 24 24"><path d="${ICONS[name]}"/></svg>${text}`;
+  b.title = label;
+  b.setAttribute('aria-label', label);
 }
 
 function render() { renderSide(); renderList(); renderEditor(); }
@@ -269,7 +285,7 @@ ed.addEventListener('click', e => {
   const box = e.target.closest('.box');
   if (box) {
     const n = notes[view.current], lines = n.text.split('\n'), i = +box.dataset.line;
-    lines[i] = lines[i].replace(/\[([ xX])\]/, (_, c) => (c === ' ' ? '[x]' : '[ ]'));
+    lines[i] = lines[i].replace(/\[([ xX]?)\]/, (_, c) => (c.trim() ? '[]' : '[x]'));
     return setText(lines.join('\n'), offsetOf(ed, i + 1) - 1);
   }
   // Links work on a plain click, like Bear; to edit one, put the caret next to it with the keyboard.
@@ -331,7 +347,7 @@ $('#archiveBtn').onclick = () => {
 $('#trashBtn').onclick = e => {
   const n = notes[view.current], b = e.currentTarget;
   if (!n.trashed) { n.trashed = true; changed(n, false); return open(null); }
-  if (b.textContent !== '정말 삭제?') { b.textContent = '정말 삭제?'; return setTimeout(() => renderEditor(), 3000); }
+  if (!b.textContent) { icon('#trashBtn', 'trash', '한 번 더 누르면 영구 삭제', '정말 삭제?'); return setTimeout(() => renderEditor(), 3000); }
   if (n.sha) { n.gone = true; changed(n, false); } else delete notes[n.id];
   open(null);
 };
