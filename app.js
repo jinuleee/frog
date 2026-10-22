@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag } from './core.js?v=5';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag } from './core.js?v=6';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -351,8 +351,7 @@ const catRow = (c = {}) => `<li data-old="${esc(c.name || '')}"><input type="col
 $('#catManage').onclick = () => { $('#catRows').innerHTML = ''; for (const c of cats) $('#catRows').insertAdjacentHTML('beforeend', catRow(c)); $('#catDlg').showModal(); };
 $('#catAdd').onclick = () => { $('#catRows').insertAdjacentHTML('beforeend', catRow()); $('#catRows').lastElementChild.querySelector('.name').focus(); };
 $('#catRows').onclick = e => e.target.closest('.del')?.closest('li').remove();
-$('#catDlg').onclose = () => {
-  if ($('#catDlg').returnValue !== 'ok') return;
+$('#catDlg form').onsubmit = () => {
   const next = [], moved = {};
   for (const li of $('#catRows').children) {
     const name = li.querySelector('.name').value.trim().replace(/\s+/g, ' ');
@@ -413,8 +412,8 @@ $('#settingsBtn').onclick = () => {
   f.showDates.checked = cfg.showDates !== false;
   $('#settings').showModal();
 };
-$('#settings').onclose = () => {
-  if ($('#settings').returnValue !== 'ok') return;
+// Save on submit, not on the dialog's close event: some browsers deliver that late or never.
+$('#settings form').onsubmit = () => {
   const f = $('#settings form');
   for (const k of ['repo', 'token', 'theme']) cfg[k] = f[k].value.trim();
   cfg.showDates = f.showDates.checked;

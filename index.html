@@ -8,8 +8,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-512.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="style.css?v=5">
-<script type="module" src="app.js?v=5"></script>
+<link rel="stylesheet" href="style.css?v=6">
+<script type="module" src="app.js?v=6"></script>
 </head>
 <body data-pane="list">
 <aside id="side">
@@ -98,7 +98,7 @@
     </label>
     <label class="check"><input type="checkbox" name="showDates"> 글쓰기 칸 오른쪽에 날짜 표시</label>
     <menu>
-      <button value="cancel" formnovalidate>취소</button>
+      <button type="button" onclick="this.closest('dialog').close()">취소</button>
       <button value="ok">저장</button>
     </menu>
   </form>
@@ -111,7 +111,7 @@
     <ul id="catRows" class="rows"></ul>
     <button type="button" id="catAdd" class="add">+ 카테고리 추가</button>
     <menu>
-      <button value="cancel" formnovalidate>취소</button>
+      <button type="button" onclick="this.closest('dialog').close()">취소</button>
       <button value="ok">저장</button>
     </menu>
   </form>
