@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>frog</title>
+<meta name="theme-color" content="#3f8f4f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+<script src="vendor/showdown.min.js"></script>
+<script type="module" src="app.js"></script>
+</head>
+<body data-pane="list">
+<aside id="side">
+  <header class="brand"><img src="icon.svg" alt=""> frog</header>
+  <nav aria-label="보기">
+    <button data-filter="all">노트</button>
+    <button data-filter="archived">보관함</button>
+    <button data-filter="trashed">휴지통</button>
+  </nav>
+  <h2>태그</h2>
+  <ul id="tags" class="tree"></ul>
+  <footer>
+    <span id="status" role="status"></span>
+    <button id="settingsBtn">설정</button>
+  </footer>
+</aside>
+
+<section id="list">
+  <header>
+    <button id="menuBtn" class="mobile">메뉴</button>
+    <input id="search" type="search" placeholder="검색" aria-label="노트 검색">
+    <button id="newBtn" aria-label="새 노트">+</button>
+  </header>
+  <ul id="items" aria-label="노트 목록"></ul>
+</section>
+
+<main id="editor">
+  <header>
+    <button id="backBtn" class="mobile">목록</button>
+    <span class="spacer"></span>
+    <button id="modeBtn">미리보기</button>
+    <button id="pinBtn">고정</button>
+    <button id="archiveBtn">보관</button>
+    <button id="trashBtn">삭제</button>
+    <button id="exportBtn">내보내기</button>
+  </header>
+  <textarea id="text" aria-label="노트 내용" placeholder="# 제목&#10;&#10;내용을 쓰고 #태그 또는 #업무/회의 처럼 정리하세요."></textarea>
+  <article id="preview" hidden></article>
+  <p id="empty">노트를 고르거나 + 로 새로 만드세요.</p>
+</main>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h2>설정</h2>
+    <label>노트 저장소 (아이디/저장소)
+      <input name="repo" required pattern="[\w.\-]+/[\w.\-]+" autocomplete="off">
+    </label>
+    <label>GitHub 토큰 (이 기기에만 저장)
+      <input name="token" type="password" autocomplete="off">
+    </label>
+    <label>테마
+      <select name="theme">
+        <option value="auto">시스템 따라가기</option>
+        <option value="lily">Lily · 라이트</option>
+        <option value="paper">Paper · 라이트</option>
+        <option value="pond">Pond · 다크</option>
+        <option value="night">Night · 다크</option>
+      </select>
+    </label>
+    <menu>
+      <button value="cancel" formnovalidate>취소</button>
+      <button value="ok">저장</button>
+    </menu>
+  </form>
+</dialog>
+</body>
+</html>
