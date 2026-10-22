@@ -1,4 +1,4 @@
-import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey, IMG } from './core.js?v=11';
+import { tags, title, toFile, fromFile, b64encode, b64decode, esc, renderLines, enter, renameTag, removeTag, toggleTodo, openTodos, hasOpenTodo, wrap, linePrefix, tableKey, IMG } from './core.js?v=12';
 
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -352,7 +352,7 @@ ed.addEventListener('paste', e => {
   if (!sel) return;
   const file = [...e.clipboardData.files].find(f => f.type.startsWith('image/'));
   if (file) return void pasteImage(file, sel);
-  const t = notes[view.current].text, add = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+  const t = notes[view.current].text, add = e.clipboardData.getData('text/plain').replace(/\r\n?|\n/g, inTable(t, sel[0]) ? ' ' : '\n');
   setText(t.slice(0, sel[0]) + add + t.slice(sel[1]), sel[0] + add.length);
 });
 
@@ -571,6 +571,8 @@ $('#settings form').onsubmit = () => {
 const IMG_CACHE = 'frog-img', imgReq = p => new Request(new URL(`__img/${p}`, location.href)), imgs = {};
 const queue = { get: () => JSON.parse(localStorage['frog.imgQueue'] || '[]'), set: q => (localStorage['frog.imgQueue'] = JSON.stringify(q)) };
 
+const inTable = (t, pos) => /^\s*\|.*\|\s*$/.test(t.slice(t.lastIndexOf('\n', pos - 1) + 1).split('\n')[0]);
+
 async function pasteImage(file, [a, b]) {
   let blob = file, ext = 'gif';
   if (file.type !== 'image/gif') { // keep GIFs animated; everything else becomes a JPEG up to 1600px wide
@@ -586,7 +588,8 @@ async function pasteImage(file, [a, b]) {
   const path = `images/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${ext}`;
   await (await caches.open(IMG_CACHE)).put(imgReq(path), new Response(blob, { headers: { 'Content-Type': blob.type } }));
   queue.set([...queue.get(), path]);
-  const t = notes[view.current].text, md = `${a && t[a - 1] !== '\n' ? '\n' : ''}![](${path})\n`; // on a line of its own
+  const t = notes[view.current].text, md = inTable(t, a) ? `![](${path})` // a table cell must stay on one line
+    : `${a && t[a - 1] !== '\n' ? '\n' : ''}![](${path})\n`; // otherwise on a line of its own
   setText(t.slice(0, a) + md + t.slice(b), a + md.length);
 }
 
